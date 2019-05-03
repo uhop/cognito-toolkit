@@ -1,7 +1,7 @@
 {
   "name": "cognito-toolkit",
   "version": "1.0.0",
-  "description": "Koa middleware for AWS Cognito integration.",
+  "description": "Helpers for AWS Cognito to build web applications with authentication/authorization",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
