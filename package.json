@@ -1,6 +1,6 @@
 {
   "name": "cognito-toolkit",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Helpers for AWS Cognito to build web applications with authentication/authorization",
   "main": "index.js",
   "scripts": {
@@ -25,6 +25,6 @@
   "dependencies": {
     "debug": "^4.1.1",
     "jsonwebtoken": "^8.5.1",
-    "jwk-to-pem": "^2.0.1"
+    "jwk-to-pem": "^2.0.3"
   }
 }

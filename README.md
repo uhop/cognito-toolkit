@@ -49,7 +49,7 @@ All provided functions are explained below. See the examples above for usage pat
 
 This is the main function directly returned from the main module. It returns an asynchronous function, which is used to decode a user.
 
-It takes one argument `options`, which is an object with the following properties:
+It takes one argument `options`, which is an object with the following properties or an array of such objects:
 
 * `region` &mdash **required** string, which specifies an AWS region, such as `'us-east-1'`. Default: **none**.
 * `userPoolId` &mdash **required** string, which specifies a user pool ID, such as `'us-east-1_MY_USER_POOL'`. Default: **none**.
@@ -188,7 +188,8 @@ const doIt = async () => {
 
 # Versions
 
-- 1.0.0 &mdash; *The initial public release*
+- 1.0.1 *Added support for multiple pools.*
+- 1.0.0 *The initial public release.*
 
 # License
 
