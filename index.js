@@ -9,47 +9,57 @@ const jwkToPem = require('jwk-to-pem');
 
 const verify = promisify(jwt.verify.bind(jwt));
 
-let issuer = null,
+let issuers = null,
   pems = null;
 
 const preparePems = async () => {
-  const jwks = await new Promise(resolve => {
-    let data = '';
-    const clientRequest = https.request(issuer + '/.well-known/jwks.json', response => {
-      if (response.statusCode >= 400) {
-        debug('Bad status code: ' + response.statusCode);
-        return resolve(null);
-      }
-      response.setEncoding('utf8');
-      response.on('data', chunk => (data += chunk));
-      response.on('end', () => resolve(data ? JSON.parse(data) : null));
-    });
-    clientRequest.on('error', error => {
-      debug('Cannot retrieve jwks from the user pool: ' + issuer);
-      resolve(null);
-    });
-    clientRequest.end();
-  });
+  const jwks = await Promise.all(
+    issuers.map(
+      issuer =>
+        new Promise(resolve => {
+          let data = '';
+          const clientRequest = https.request(issuer + '/.well-known/jwks.json', response => {
+            if (response.statusCode >= 400) {
+              debug('Bad status code: ' + response.statusCode);
+              return resolve(null);
+            }
+            response.setEncoding('utf8');
+            response.on('data', chunk => (data += chunk));
+            response.on('end', () => resolve(data ? JSON.parse(data) : null));
+          });
+          clientRequest.on('error', error => {
+            debug('Cannot retrieve jwks from the user pool: ' + issuer);
+            resolve(null);
+          });
+          clientRequest.end();
+        })
+    )
+  );
   pems = {};
-  jwks.keys.forEach(key => (pems[key.kid] = jwkToPem(key)));
+  jwks.forEach(jwk => jwk && jwk.keys.forEach(key => (pems[key.kid] = jwkToPem(key))));
 };
 
-const getUser = options => {
-  if (!options || !options.region) {
-    throw new Error('Region should be specified');
+const makeGetUser = options => {
+  if (!(options instanceof Array)) {
+    options = [options];
   }
-  if (!options.userPoolId) {
-    throw new Error('User pool ID should be specified');
-  }
-  issuer = `https://cognito-idp.${options.region}.amazonaws.com/${options.userPoolId}`;
+  issuers = options.map(option => {
+    if (!option || !option.region) {
+      throw new Error('Region should be specified');
+    }
+    if (!option.userPoolId) {
+      throw new Error('User pool ID should be specified');
+    }
+    return `https://cognito-idp.${option.region}.amazonaws.com/${option.userPoolId}`;
+  });
   return async token => {
-    !pems && await preparePems();
+    !pems && (await preparePems());
     const decodedToken = jwt.decode(token, {complete: true});
     if (!decodedToken) {
       debug('Invalid token: ' + token);
       return null;
     }
-    if (decodedToken.payload.iss !== issuer) {
+    if (!issuers.some(issuer => decodedToken.payload.iss === issuer)) {
       debug('Unexpected user pool: ' + decodedToken.payload.iss);
       return null;
     }
@@ -58,11 +68,11 @@ const getUser = options => {
       debug('Unexpected kid: ' + decodedToken.header.kid);
       return null;
     }
-    return verify(token, pem, {issuer}).catch(error => {
+    return verify(token, pem, {issuer: decodedToken.payload.iss}).catch(error => {
       debug('Cannot validate a token: ' + error.message);
       return null;
     });
   };
 };
 
-module.exports = getUser;
+module.exports = makeGetUser;
