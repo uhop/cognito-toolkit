@@ -1,8 +1,8 @@
-# `cognito-toolkit`
+# `cognito-toolkit` [![NPM version][npm-img]][npm-url]
 
-[![Dependencies][deps-image]][deps-url]
-[![devDependencies][dev-deps-image]][dev-deps-url]
-[![NPM version][npm-image]][npm-url]
+[npm-img]: https://img.shields.io/npm/v/cognito-toolkit.svg
+[npm-url]: https://npmjs.org/package/cognito-toolkit
+
 
 Helpers to authenticate and authorized users using [AWS Cognito](https://aws.amazon.com/cognito/)
 [user pools](https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-identity-pools.html).
@@ -188,16 +188,10 @@ const doIt = async () => {
 
 # Versions
 
+- 1.0.2 *Updated dependencies.*
 - 1.0.1 *Added support for multiple pools.*
 - 1.0.0 *The initial public release.*
 
 # License
 
 [The 3-Clause BSD License](https://opensource.org/licenses/BSD-3-Clause)
-
-[npm-image]:       https://img.shields.io/npm/v/cognito-toolkit.svg
-[npm-url]:         https://npmjs.org/package/cognito-toolkit
-[deps-image]:      https://img.shields.io/david/uhop/cognito-toolkit.svg
-[deps-url]:        https://david-dm.org/uhop/cognito-toolkit
-[dev-deps-image]:  https://img.shields.io/david/dev/uhop/cognito-toolkit.svg
-[dev-deps-url]:    https://david-dm.org/uhop/cognito-toolkit?type=dev
