@@ -23,7 +23,7 @@
   },
   "homepage": "https://github.com/uhop/cognito-toolkit#readme",
   "dependencies": {
-    "debug": "^4.1.1",
+    "debug": "^4.2.0",
     "jsonwebtoken": "^8.5.1",
     "jwk-to-pem": "^2.0.4"
   },
