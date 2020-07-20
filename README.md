@@ -188,6 +188,7 @@ const doIt = async () => {
 
 # Versions
 
+- 1.0.3 *Updated dependencies.*
 - 1.0.2 *Updated dependencies.*
 - 1.0.1 *Added support for multiple pools.*
 - 1.0.0 *The initial public release.*
