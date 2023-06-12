@@ -1,7 +1,8 @@
 {
   "name": "cognito-toolkit",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Helpers for AWS Cognito to build web applications with authentication/authorization",
+  "type": "commonjs",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
