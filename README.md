@@ -9,6 +9,11 @@ Helpers to authenticate and authorized users using [AWS Cognito](https://aws.ama
 A JWT token (either an id or access token) is validated and returned in a decrypted form.
 Simple helpers are provided to make decisions on accessibility of API endpoints for a given user.
 
+Companion projects based on this toolkit:
+
+- Express middleware: https://github.com/uhop/cognito-express-middleware
+- Koa middleware: https://www.npmjs.com/package/koa-cognito-middleware
+
 # Examples
 
 ```js
@@ -188,6 +193,7 @@ const doIt = async () => {
 
 # Versions
 
+- 1.0.6 *Updated dependencies.*
 - 1.0.5 *Updated dependencies.*
 - 1.0.4 *Updated dependencies.*
 - 1.0.3 *Updated dependencies.*

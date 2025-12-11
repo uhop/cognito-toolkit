@@ -1,6 +1,6 @@
 {
   "name": "cognito-toolkit",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Helpers for AWS Cognito to build web applications with authentication/authorization",
   "type": "commonjs",
   "main": "index.js",
@@ -24,9 +24,9 @@
   },
   "homepage": "https://github.com/uhop/cognito-toolkit#readme",
   "dependencies": {
-    "debug": "^4.3.4",
-    "jsonwebtoken": "^9.0.0",
-    "jwk-to-pem": "^2.0.5"
+    "debug": "^4.4.3",
+    "jsonwebtoken": "^9.0.3",
+    "jwk-to-pem": "^2.0.7"
   },
   "files": [
     "/*.js",
