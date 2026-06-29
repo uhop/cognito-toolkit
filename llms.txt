@@ -1,0 +1,75 @@
+# cognito-toolkit (v2)
+
+> Zero-runtime-dependency, ESM-only micro-library that validates AWS Cognito JWTs (id / access tokens) for authentication & authorization. `makeGetUser(pools, options?)` returns an async validator that fetches the pool's JWKS, verifies the signature under a configurable algorithm policy (default `['RS256']`), checks issuer / `kid` / `exp` / `nbf` plus an optional `validate` hook, and resolves to the decoded payload or `null`. Works against non-Cognito OIDC issuers too. Two `utils/` helpers fetch and cache OAuth2 `client_credentials` access tokens. Built on Node built-ins (`crypto`, `fetch`, `util.debuglog`) — no AWS SDK. Runtime targets Node 20+, latest Bun, latest Deno.
+
+## Install
+
+```sh
+npm install cognito-toolkit
+```
+
+## Quick start
+
+```js
+import makeGetUser from 'cognito-toolkit';
+
+const getUser = makeGetUser({region: 'us-east-1', userPoolId: 'us-east-1_AbCdef'});
+
+// per request: pass a JWT taken from a header or cookie
+const user = await getUser(authHeader || authCookie);
+if (user) {
+  // `user` is the decoded, verified JWT payload
+} else {
+  // not authenticated
+}
+```
+
+CommonJS consumers use the named export: `const {makeGetUser} = require('cognito-toolkit')`.
+
+## Sub-exports
+
+- `cognito-toolkit` — `makeGetUser` (default + named) + `SUPPORTED_ALGORITHMS`. Builds a token validator for one or more Cognito user pools (or any OIDC issuer).
+- `cognito-toolkit/utils/lazy-access-token` — `createLazyAccessToken` (default + named). On-demand, cached `client_credentials` access-token holder.
+- `cognito-toolkit/utils/renewable-access-token` — `createRenewableAccessToken` (default + named). Timer-renewed `client_credentials` access-token holder.
+
+## API
+
+### `makeGetUser(pools, globalOptions?) -> (token) => Promise<payload | null>`
+
+`pools` is a pool object or an array of them:
+
+- `region` — AWS region, e.g. `'us-east-1'`. Required unless `issuer` is given.
+- `userPoolId` — user pool id, e.g. `'us-east-1_AbCdef'`. Required unless `issuer` is given.
+- `issuer` — full issuer URL, overriding `region` + `userPoolId` (non-Cognito OIDC or testing). JWKS is read from `${issuer}/.well-known/jwks.json`.
+
+`globalOptions` (optional):
+
+- `algorithms` — allowed signing algorithms: a JWA-name array or a predicate `(alg, header) => boolean`. Default: `['RS256']`. Verifiable set = `SUPPORTED_ALGORITHMS` (`RS256/384/512`, `PS256/384/512`, `ES256/384/512`); `HS*` and `none` are always rejected, so widening the list cannot enable algorithm confusion.
+- `validate` — optional `(payload, header) => boolean | Promise<boolean>` gate run after signature + `exp` / `nbf`. Falsy or throw → reject. For claims like `token_use`, `aud`, `client_id`.
+- `fetch` — custom `fetch` implementation. Default: global `fetch`.
+- `minRefreshInterval` — minimum ms between JWKS refreshes triggered by an unknown `kid` (rotation handling). Default: `0`.
+- `clockTolerance` — allowed clock skew in seconds for `exp` / `nbf`. Default: `0`.
+
+The returned validator resolves to the decoded payload when the algorithm policy, signature, issuer, `kid`, `exp` / `nbf`, and `validate` hook all check out; otherwise `null`. It never throws on malformed input. JWKS keys are fetched lazily and refreshed automatically on key rotation. The token header's `alg` is only checked against the `algorithms` policy — never used to choose how the token is verified.
+
+### Other OIDC providers
+
+Pass `issuer` instead of `region` + `userPoolId` and set `algorithms` to what the provider signs with:
+
+```js
+const getUser = makeGetUser({issuer: 'https://accounts.example.com'}, {algorithms: ['ES256'], validate: p => p.aud === 'my-api'});
+```
+
+### `createLazyAccessToken({url, clientId, secret, fetch?}) -> {authorize, getToken}`
+
+`authorize()` returns a cached unexpired token or fetches a fresh one; `getToken()` returns the current token without fetching. State is per-instance.
+
+### `createRenewableAccessToken({url, clientId, secret, fetch?}) -> {retrieveToken, cancelRenewal, getToken}`
+
+`retrieveToken()` fetches a token and schedules an automatic refresh shortly before expiry (the timer is `unref`ed). `cancelRenewal(clearToken?)` stops the refresh. Always read the live token via `getToken()`.
+
+## Notes
+
+- Zero runtime dependencies; verification is offline except the public JWKS fetch.
+- ESM-only with hand-written `.d.ts` sidecars; no build step.
+- v2 is a breaking rewrite of v1 (CommonJS, `jsonwebtoken` + `jwk-to-pem`). The `makeGetUser` contract is unchanged; the `utils/` are now factories instead of module-level singletons.

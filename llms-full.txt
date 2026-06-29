@@ -1,0 +1,166 @@
+# cognito-toolkit (v2) — full reference
+
+> Zero-runtime-dependency, ESM-only micro-library that validates AWS Cognito JWTs for authentication & authorization, plus helpers to obtain OAuth2 `client_credentials` access tokens. Built entirely on Node built-ins (`node:crypto`, global `fetch`, `node:util`). No AWS SDK. Node 20+, latest Bun, latest Deno.
+
+## Concepts
+
+A Cognito user pool signs id and access tokens with RS256 and publishes its public keys as a JWKS document at `https://cognito-idp.<region>.amazonaws.com/<userPoolId>/.well-known/jwks.json`. To authenticate a request you verify the token's signature against that JWKS and check its standard claims. This library does exactly that, offline, with no AWS SDK:
+
+1. Derive the issuer URL from `{region, userPoolId}` (or take an explicit `issuer`).
+2. Fetch the JWKS lazily on first use; import each JWK to a `crypto.KeyObject`; cache by `kid`.
+3. For each token: split it, decode header + payload, gate `alg` against the `algorithms` policy (default `['RS256']`), check `iss`, resolve the key by `kid` (refreshing the JWKS if the `kid` is unknown — that is the key-rotation signal), verify the signature with `crypto.verify` (digest + padding / `dsaEncoding` come from the matched algorithm, not the header), check `exp` / `nbf`, then run the optional `validate` hook.
+
+Any failure resolves to `null`; malformed input never throws.
+
+The `alg` header is only ever compared against your `algorithms` policy — it never selects how the token is verified — and only asymmetric algorithms are mappable, so `HS*` and `none` can never be verified regardless of policy.
+
+## Install
+
+```sh
+npm install cognito-toolkit
+```
+
+ESM:
+
+```js
+import makeGetUser from 'cognito-toolkit';
+```
+
+CommonJS (Node 20.19+ / 22.12+ via `require(esm)`, named export):
+
+```js
+const {makeGetUser} = require('cognito-toolkit');
+```
+
+## `makeGetUser(pools, globalOptions?)`
+
+Builds a validator for one or more pools.
+
+```js
+// single pool
+const getUser = makeGetUser({region: 'us-east-1', userPoolId: 'us-east-1_AbCdef'});
+
+// multiple pools — a token from any of them is accepted
+const getUser = makeGetUser([
+  {region: 'us-east-1', userPoolId: 'us-east-1_AAA'},
+  {region: 'us-west-2', userPoolId: 'us-west-2_BBB'}
+]);
+
+// explicit issuer (e.g. a custom OIDC provider or a test server)
+const getUser = makeGetUser({issuer: 'https://issuer.example.com/pool'});
+
+// with global options
+const getUser = makeGetUser(
+  {region: 'us-east-1', userPoolId: 'us-east-1_AbCdef'},
+  {clockTolerance: 30, minRefreshInterval: 10_000}
+);
+```
+
+`pools` — one pool object or an array. Each pool: `region` + `userPoolId` (Cognito), or `issuer` (full URL override, trailing slashes trimmed).
+
+`globalOptions`:
+
+- `algorithms?: string[] | ((alg, header) => boolean)` — allowed signing algorithms. Default `['RS256']` (what Cognito uses). The verifiable set is `SUPPORTED_ALGORITHMS` — `RS256/384/512`, `PS256/384/512`, `ES256/384/512`. Symmetric (`HS*`) and `none` are never verifiable, so a wider list cannot enable algorithm confusion. Pass a predicate for custom logic.
+- `validate?: (payload, header) => boolean | Promise<boolean>` — optional gate run after the signature and `exp` / `nbf` checks. Return falsy (or throw) to reject. Use for `token_use`, `aud`, `client_id`, or any provider-specific claim.
+- `fetch?: typeof fetch` — custom fetch; defaults to the global.
+- `minRefreshInterval?: number` — minimum ms between JWKS refreshes triggered by an unknown `kid`. Guards the upstream endpoint against refresh storms from streams of unknown-`kid` tokens. Default `0` (refresh on every miss; concurrent misses share one request).
+- `clockTolerance?: number` — allowed clock skew in seconds for `exp` / `nbf`. Default `0`.
+
+`SUPPORTED_ALGORITHMS` is also exported from the main module for reference.
+
+Returns `(token: string) => Promise<payload | null>`. The payload is the decoded JWT body (standard Cognito claims such as `sub`, `iss`, `token_use`, `exp`, plus pool-specific claims like `cognito:username`, `cognito:groups`, `email`).
+
+### Typical usage in a request handler
+
+```js
+const authHeader = req.headers.authorization; // "Bearer <jwt>" or "<jwt>"
+const token = authHeader?.replace(/^Bearer\s+/i, '');
+const user = token && (await getUser(token));
+if (!user) {
+  res.statusCode = 401;
+  return res.end('Unauthorized');
+}
+// authorize on user['cognito:groups'], user.token_use, etc.
+```
+
+### Security notes
+
+- **The `alg` header never selects the algorithm.** It is only gated against your `algorithms` policy; the digest + padding used for verification come from the library's internal map of the matched algorithm. Because that map contains only asymmetric algorithms and the keys are asymmetric public keys from the JWKS, `HS*` and `alg: none` can never be verified — so a permissive `algorithms` policy still cannot enable an algorithm-confusion or `none` attack. The default policy is `['RS256']`.
+- **Configurability is safe here because it is server-side.** The `algorithms` policy and `validate` hook are set by your code, not by anything an attacker controls.
+- **Issuer is checked before key lookup**, so a token claiming a foreign issuer is rejected without touching the key store.
+- Verification uses Node's `crypto.verify`, not a hand-rolled signature routine.
+
+### Non-Cognito OIDC providers
+
+The verifier is provider-agnostic given a JWKS. Point it at any issuer and declare its algorithms:
+
+```js
+const getUser = makeGetUser(
+  {issuer: 'https://accounts.example.com'},
+  {algorithms: ['ES256', 'RS256'], validate: payload => payload.aud === 'my-api'}
+);
+```
+
+The two `utils/` token holders are Cognito-domain (`/oauth2/token`) oriented but work against any compatible `client_credentials` endpoint.
+
+## `cognito-toolkit/utils/lazy-access-token`
+
+`createLazyAccessToken({url, clientId, secret, fetch?})` → `{authorize, getToken}`.
+
+For service-to-service calls where you need a Cognito `client_credentials` access token from a user-pool **domain** token endpoint (`https://<domain>/oauth2/token`).
+
+```js
+import {createLazyAccessToken} from 'cognito-toolkit/utils/lazy-access-token';
+
+const auth = createLazyAccessToken({
+  url: 'https://auth.example.com/oauth2/token',
+  clientId: process.env.AUTH_CLIENT_ID,
+  secret: process.env.AUTH_CLIENT_SECRET
+});
+
+const token = await auth.authorize(); // cached until shortly before expiry
+const headers = {authorization: token.access_token};
+```
+
+- `authorize()` — returns a cached unexpired token, else fetches a fresh one. Refresh fires within 5 minutes of expiry (or at half the lifetime if `expires_in` < 5 min).
+- `getToken()` — current token or `null`, no fetch.
+
+State is per-instance; create one holder per credential set.
+
+## `cognito-toolkit/utils/renewable-access-token`
+
+`createRenewableAccessToken({url, clientId, secret, fetch?})` → `{retrieveToken, cancelRenewal, getToken}`.
+
+Like the lazy holder, but it proactively renews on a timer instead of on demand.
+
+```js
+import {createRenewableAccessToken} from 'cognito-toolkit/utils/renewable-access-token';
+
+const auth = createRenewableAccessToken({
+  url: 'https://auth.example.com/oauth2/token',
+  clientId: process.env.AUTH_CLIENT_ID,
+  secret: process.env.AUTH_CLIENT_SECRET
+});
+
+await auth.retrieveToken();        // fetch once; auto-renews thereafter
+const token = auth.getToken();     // always read the live token
+
+// on shutdown
+auth.cancelRenewal(true);
+```
+
+- `retrieveToken()` — fetches a token and schedules a refresh shortly before expiry. The refresh timer is `unref`ed, so it never keeps the process alive by itself.
+- `cancelRenewal(clearToken?)` — cancels the scheduled refresh; pass `true` to also drop the cached token.
+- `getToken()` — current token or `null`. The renewal swaps it out over time, so always read it fresh rather than holding a reference.
+
+## Migration from v1
+
+- v1 was CommonJS (`const makeGetUser = require('cognito-toolkit')`) and depended on `jsonwebtoken` + `jwk-to-pem`. v2 is ESM-only, zero-dependency.
+- The `makeGetUser(pools)` contract is **unchanged**; only the import changes (`import makeGetUser from 'cognito-toolkit'`, or `const {makeGetUser} = require('cognito-toolkit')` from CJS).
+- The token utilities moved from module-level singletons to **factories**. v1 `setCredentials(...) / authorize() / getToken()` becomes `const {authorize, getToken} = createLazyAccessToken({url, clientId, secret})`; v1 `retrieveToken(url, id, secret) / cancelRenewal() / getToken()` becomes `const {retrieveToken, cancelRenewal, getToken} = createRenewableAccessToken({url, clientId, secret})`. This fixes the v1 footgun where only one credential set / pool could exist per process.
+- Debug logging moved from the `debug` package to `node:util` `debuglog` — enable with `NODE_DEBUG=cognito-toolkit`.
+
+## Companion middleware
+
+- Express: https://github.com/uhop/cognito-express-middleware
+- Koa: https://github.com/uhop/koa-cognito-middleware
