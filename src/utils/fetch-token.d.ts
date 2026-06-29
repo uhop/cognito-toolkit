@@ -17,6 +17,6 @@ export interface FetchTokenOptions {
   fetch?: typeof fetch;
 }
 
-/** POSTs a `client_credentials` grant and resolves the token (or `null`). */
-export function fetchToken(options: FetchTokenOptions): Promise<AccessToken | null>;
+/** POSTs a `client_credentials` grant and resolves the token. Throws on a non-OK status or an empty / unparseable body. */
+export function fetchToken(options: FetchTokenOptions): Promise<AccessToken>;
 export default fetchToken;

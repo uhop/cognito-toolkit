@@ -21,11 +21,30 @@ test('lazy: authorize() fetches once and caches until expiry', async t => {
 
 test('lazy: a custom fetch is honored', async t => {
   let calls = 0;
-  const fetch = async () => (++calls, {ok: true, status: 200, text: async () => JSON.stringify({access_token: 'x', token_type: 'Bearer', expires_in: 3600})});
+  const fetch = async () => (++calls, {ok: true, status: 200, json: async () => ({access_token: 'x', token_type: 'Bearer', expires_in: 3600})});
   const lazy = createLazyAccessToken({url: 'https://example/oauth2/token', clientId: 'id', secret: 's', fetch});
   const token = await lazy.authorize();
   t.equal(token.access_token, 'x');
   t.equal(calls, 1, 'custom fetch used');
+});
+
+test('tokens: an unparseable 2xx body throws (and chains the cause) rather than resolving null', async t => {
+  const parseError = new SyntaxError('Unexpected end of JSON input');
+  const fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => {
+      throw parseError;
+    }
+  });
+  const lazy = createLazyAccessToken({url: 'https://example/oauth2/token', clientId: 'id', secret: 's', fetch});
+  try {
+    await lazy.authorize();
+    t.fail('should have thrown');
+  } catch (error) {
+    t.matchString(error.message, /Invalid token response body/, 'wraps with a clear message');
+    t.equal(error.cause, parseError, 'chains the original parse error as cause');
+  }
 });
 
 test('renewable: retrieveToken() fetches and exposes the token', async t => {

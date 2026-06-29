@@ -12,11 +12,8 @@ export const createLazyAccessToken = options => {
   const authorize = async () => {
     if (token && Date.now() < tokenExpires) return token;
     token = await fetchToken({url, clientId, secret, fetch});
-    tokenExpires = -1;
-    if (token) {
-      const expires = token.expires_in * 1000; // ms
-      tokenExpires = Date.now() + (expires > GAP ? expires - GAP : expires / 2);
-    }
+    const expires = token.expires_in * 1000;
+    tokenExpires = Date.now() + (expires > GAP ? expires - GAP : expires / 2);
     return token;
   };
 

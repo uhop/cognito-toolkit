@@ -12,13 +12,10 @@ export const createRenewableAccessToken = options => {
   const retrieveToken = async () => {
     token = await fetchToken({url, clientId, secret, fetch});
     timeoutId && clearTimeout(timeoutId);
-    timeoutId = null;
-    if (token) {
-      const expires = token.expires_in * 1000; // ms
-      timeoutId = setTimeout(retrieveToken, expires > GAP ? expires - GAP : expires / 2);
-      // Don't keep the event loop alive just for the refresh timer.
-      timeoutId.unref?.();
-    }
+    const expires = token.expires_in * 1000;
+    timeoutId = setTimeout(retrieveToken, expires > GAP ? expires - GAP : expires / 2);
+    // Don't keep the event loop alive just for the refresh timer.
+    timeoutId.unref?.();
     return token;
   };
 

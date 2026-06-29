@@ -144,7 +144,7 @@ Each holder keeps its own state — create one per credential set.
 
 ## Release notes
 
-- **2.0.0** _Zero-dependency, ESM-only rewrite. Verification on Node built-ins (`crypto` + `fetch`); configurable algorithm policy (default RS256, asymmetric-only) + `validate` hook + non-Cognito OIDC support; automatic JWKS rotation refresh; token utilities are now per-instance factories. Requires Node 20+._
+- **2.0.0** _Zero-dependency, ESM-only rewrite. Verification on Node built-ins (`crypto` + `fetch`); configurable algorithm policy (default RS256, asymmetric-only) + `validate` hook + non-Cognito OIDC support; automatic JWKS rotation refresh; token utilities are now per-instance factories._
 - 1.0.6 _Updated dependencies._
 - 1.0.5 _Updated dependencies._
 - 1.0.4 _Updated dependencies._

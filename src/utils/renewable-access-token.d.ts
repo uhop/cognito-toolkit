@@ -14,10 +14,10 @@ export interface AccessTokenOptions {
 export interface RenewableAccessToken {
   /**
    * Fetches a token and schedules an automatic refresh shortly before it
-   * expires. Returns the freshly fetched token. The refresh timer is `unref`ed,
-   * so it never keeps the process alive on its own.
+   * expires. Returns the freshly fetched token (throws on a failed fetch). The
+   * refresh timer is `unref`ed, so it never keeps the process alive on its own.
    */
-  retrieveToken(): Promise<AccessToken | null>;
+  retrieveToken(): Promise<AccessToken>;
   /** Cancels the scheduled refresh; pass `true` to also drop the cached token. */
   cancelRenewal(clearToken?: boolean): void;
   /** Returns the current token without fetching (may be `null`). */

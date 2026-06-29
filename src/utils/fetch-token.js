@@ -10,8 +10,13 @@ export const fetchToken = async ({url, clientId, secret, fetch: fetchImpl = fetc
   }
   const response = await fetchImpl(url, {method: 'POST', headers, body: BODY});
   if (!response.ok) throw new Error('Bad status code: ' + response.status);
-  const text = await response.text();
-  return text ? JSON.parse(text) : null;
+  try {
+    // A 2xx OAuth2 token response always carries a JSON body; an empty or
+    // unparseable one is a malformed response, not a "no token" result.
+    return await response.json();
+  } catch (error) {
+    throw new Error('Invalid token response body from ' + url, {cause: error});
+  }
 };
 
 export default fetchToken;

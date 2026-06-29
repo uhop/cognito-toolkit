@@ -45,7 +45,7 @@ export const createKeyStore = (issuers, {fetch: fetchImpl = fetch, minRefreshInt
   return {
     get: async kid => {
       if (keys.has(kid)) return keys.get(kid);
-      // Unknown kid → the pool may have rotated keys. Refresh, rate-limited.
+      // A miss can mean the pool rotated its signing keys.
       if (Date.now() - lastRefresh >= minRefreshInterval) await refresh();
       return keys.get(kid) ?? null;
     }

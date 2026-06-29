@@ -12,8 +12,8 @@ export interface AccessTokenOptions {
 }
 
 export interface LazyAccessToken {
-  /** Returns a cached unexpired token, or fetches a fresh one on demand. */
-  authorize(): Promise<AccessToken | null>;
+  /** Returns a cached unexpired token, or fetches a fresh one on demand. Throws on a failed fetch. */
+  authorize(): Promise<AccessToken>;
   /** Returns the current token without fetching (may be `null`). */
   getToken(): AccessToken | null;
 }

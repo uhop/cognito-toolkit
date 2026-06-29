@@ -44,7 +44,6 @@ export const verifyToken = async (token, {issuers, keyStore, isAlgorithmAllowed,
     return null;
   }
 
-  // Algorithm policy is enforced before anything touches the key.
   if (!isAlgorithmAllowed(header.alg, header)) {
     debug('algorithm not allowed: %s', header.alg);
     return null;
