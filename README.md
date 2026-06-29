@@ -75,13 +75,29 @@ Returns an async validator `(token) => Promise<payload | null>`.
 
 `globalOptions` (optional):
 
+- `audience` &mdash; **strongly recommended.** App client id(s) (string or array). The token's `aud` (id tokens) or `client_id` (access tokens) must match one of them — rejecting tokens minted for a _different_ app client in the same pool. Off by default; see [Security](#security).
+- `tokenUse` &mdash; **recommended.** Required `token_use` value(s): `'access'`, `'id'`, or an array. Rejects a token of the wrong type (e.g. an id token where an access token is expected). Off by default.
 - `algorithms` &mdash; allowed signing algorithms: an array of JWA names (e.g. `['RS256']`) **or** a predicate `(alg, header) => boolean`. Default: `['RS256']`. Only asymmetric algorithms are verifiable (`RS256/384/512`, `PS256/384/512`, `ES256/384/512` — exported as `SUPPORTED_ALGORITHMS`); symmetric (`HS*`) and `none` are always rejected, so widening this list can never enable an algorithm-confusion attack.
-- `validate` &mdash; optional `(payload, header) => boolean | Promise<boolean>` gate, run after the signature and `exp` / `nbf` checks pass. Return a falsy value (or throw) to reject. Use it for provider-specific claims such as `token_use`, `aud`, or `client_id`.
+- `validate` &mdash; optional `(payload, header) => boolean | Promise<boolean>` gate, run after all built-in checks pass. Return a falsy value (or throw) to reject. Use it for further claims such as `scope` or custom attributes.
+- `throwOnError` &mdash; when `true`, the validator throws a `CognitoAuthError` (with a `.code` such as `'token_expired'` or `'wrong_audience'`) instead of resolving `null`, so you can tell _why_ a token failed. Default: `false`.
 - `fetch` &mdash; custom `fetch` implementation. Default: the global `fetch`.
-- `minRefreshInterval` &mdash; minimum milliseconds between JWKS refreshes triggered by an unknown `kid` (key-rotation handling). Default: `0`.
+- `minRefreshInterval` &mdash; minimum milliseconds between per-issuer JWKS refreshes triggered by an unknown `kid` (key-rotation handling). Default: `30000`.
 - `clockTolerance` &mdash; allowed clock skew in seconds for `exp` / `nbf`. Default: `0`.
 
-The validator resolves to the decoded JWT payload when the algorithm policy, signature, issuer, `kid`, `exp` / `nbf`, and `validate` hook all check out; otherwise `null`. It never throws on malformed input. JWKS keys are fetched lazily on first use and refreshed automatically when the pool rotates them. The token header's `alg` is only ever checked against your `algorithms` policy — never used to choose how the token is verified.
+The validator resolves to the decoded JWT payload when the algorithm policy, signature, issuer, `kid`, `exp` / `nbf`, `tokenUse`, `audience`, and `validate` hook all check out; otherwise `null` (or a thrown `CognitoAuthError` under `throwOnError`). JWKS keys are fetched lazily per issuer and refreshed automatically on key rotation; call `getUser.prime()` to pre-fetch them (e.g. to avoid first-request latency on a serverless cold start). The token header's `alg` is only ever checked against your `algorithms` policy — never used to choose how the token is verified.
+
+## Security
+
+Validation proves a token is genuinely from the pool — it does **not**, by itself, prove the token was issued _for your app_ or is the _right type_. For any pool with more than one app client, set both:
+
+- **`audience`** — restrict to your app client id(s). Without it, a token minted for **any** app client in the same user pool (including a low-trust or attacker-controlled one) is accepted.
+- **`tokenUse`** — APIs almost always want `'access'`; pin it so an **id** token (meant for the client, and which also carries `cognito:groups`) can't be used in its place.
+
+```js
+const getUser = makeGetUser({region: 'us-east-1', userPoolId: 'us-east-1_MY_USER_POOL'}, {audience: process.env.APP_CLIENT_ID, tokenUse: 'access'});
+```
+
+Tokens must be the **bare JWT** — there is no `Authorization: Bearer ` handling. If your source sends that header, strip the prefix first: `header.replace(/^Bearer\s+/i, '')`.
 
 ### Other OIDC providers
 
@@ -144,7 +160,7 @@ Each holder keeps its own state — create one per credential set.
 
 ## Release notes
 
-- **2.0.0** _Zero-dependency, ESM-only rewrite. Verification on Node built-ins (`crypto` + `fetch`); configurable algorithm policy (default RS256, asymmetric-only) + `validate` hook + non-Cognito OIDC support; automatic JWKS rotation refresh; token utilities are now per-instance factories._
+- **2.0.0** _Zero-dependency, ESM-only rewrite. Verification on Node built-ins (`crypto` + `fetch`); configurable algorithm policy (default RS256, asymmetric-only); `audience` / `tokenUse` / `validate` claim checks; `throwOnError` with typed `CognitoAuthError`; per-issuer JWKS with automatic rotation refresh + `prime()`; non-Cognito OIDC support; token utilities are now per-instance factories._
 - 1.0.6 _Updated dependencies._
 - 1.0.5 _Updated dependencies._
 - 1.0.4 _Updated dependencies._

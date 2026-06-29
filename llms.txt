@@ -28,7 +28,7 @@ CommonJS consumers use the named export: `const {makeGetUser} = require('cognito
 
 ## Sub-exports
 
-- `cognito-toolkit` — `makeGetUser` (default + named) + `SUPPORTED_ALGORITHMS`. Builds a token validator for one or more Cognito user pools (or any OIDC issuer).
+- `cognito-toolkit` — `makeGetUser` (default + named) + `SUPPORTED_ALGORITHMS` + `CognitoAuthError`. Builds a token validator for one or more Cognito user pools (or any OIDC issuer).
 - `cognito-toolkit/utils/lazy-access-token` — `createLazyAccessToken` (default + named). On-demand, cached `client_credentials` access-token holder.
 - `cognito-toolkit/utils/renewable-access-token` — `createRenewableAccessToken` (default + named). Timer-renewed `client_credentials` access-token holder.
 
@@ -44,13 +44,16 @@ CommonJS consumers use the named export: `const {makeGetUser} = require('cognito
 
 `globalOptions` (optional):
 
+- `audience` — **strongly recommended.** App client id(s) (string or array). Token's `aud` (id tokens) / `client_id` (access tokens) must match one — rejects tokens for a different app client in the same pool.
+- `tokenUse` — **recommended.** Required `token_use` value(s) (`'access'` / `'id'` / array). Rejects wrong-type tokens.
 - `algorithms` — allowed signing algorithms: a JWA-name array or a predicate `(alg, header) => boolean`. Default: `['RS256']`. Verifiable set = `SUPPORTED_ALGORITHMS` (`RS256/384/512`, `PS256/384/512`, `ES256/384/512`); `HS*` and `none` are always rejected, so widening the list cannot enable algorithm confusion.
-- `validate` — optional `(payload, header) => boolean | Promise<boolean>` gate run after signature + `exp` / `nbf`. Falsy or throw → reject. For claims like `token_use`, `aud`, `client_id`.
+- `validate` — optional `(payload, header) => boolean | Promise<boolean>` gate run after all built-in checks. Falsy or throw → reject. For `scope` or custom claims.
+- `throwOnError` — when `true`, throws a typed `CognitoAuthError` (`.code`) instead of resolving `null`. Default: `false`.
 - `fetch` — custom `fetch` implementation. Default: global `fetch`.
-- `minRefreshInterval` — minimum ms between JWKS refreshes triggered by an unknown `kid` (rotation handling). Default: `0`.
+- `minRefreshInterval` — minimum ms between per-issuer JWKS refreshes triggered by an unknown `kid` (rotation handling). Default: `30000`.
 - `clockTolerance` — allowed clock skew in seconds for `exp` / `nbf`. Default: `0`.
 
-The returned validator resolves to the decoded payload when the algorithm policy, signature, issuer, `kid`, `exp` / `nbf`, and `validate` hook all check out; otherwise `null`. It never throws on malformed input. JWKS keys are fetched lazily and refreshed automatically on key rotation. The token header's `alg` is only checked against the `algorithms` policy — never used to choose how the token is verified.
+The returned validator resolves to the decoded payload when the algorithm policy, signature, issuer, `kid`, `exp` / `nbf`, `tokenUse`, `audience`, and `validate` hook all check out; otherwise `null` (or a thrown `CognitoAuthError` under `throwOnError`). JWKS keys are fetched lazily per issuer and refreshed on key rotation; `getUser.prime()` pre-fetches them. The token header's `alg` is only checked against the `algorithms` policy — never used to choose how the token is verified. Tokens must be the bare JWT (no `Bearer ` prefix).
 
 ### Other OIDC providers
 

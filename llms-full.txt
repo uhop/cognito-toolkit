@@ -60,15 +60,22 @@ const getUser = makeGetUser(
 
 `globalOptions`:
 
+- `audience?: string | string[]` — **strongly recommended.** App client id(s). The token's `aud` (id tokens) or `client_id` (access tokens) must match one — rejecting tokens minted for a *different* app client in the same pool. Off by default.
+- `tokenUse?: 'access' | 'id' | Array<'access'|'id'>` — **recommended.** Required `token_use`. Rejects a token of the wrong type (e.g. an id token where an access token is expected). Off by default.
 - `algorithms?: string[] | ((alg, header) => boolean)` — allowed signing algorithms. Default `['RS256']` (what Cognito uses). The verifiable set is `SUPPORTED_ALGORITHMS` — `RS256/384/512`, `PS256/384/512`, `ES256/384/512`. Symmetric (`HS*`) and `none` are never verifiable, so a wider list cannot enable algorithm confusion. Pass a predicate for custom logic.
-- `validate?: (payload, header) => boolean | Promise<boolean>` — optional gate run after the signature and `exp` / `nbf` checks. Return falsy (or throw) to reject. Use for `token_use`, `aud`, `client_id`, or any provider-specific claim.
+- `validate?: (payload, header) => boolean | Promise<boolean>` — optional gate run after all built-in checks. Return falsy (or throw) to reject. Use for `scope` or custom claims.
+- `throwOnError?: boolean` — when `true`, throws `CognitoAuthError` (with a `.code` like `'token_expired'` / `'wrong_audience'`) instead of resolving `null`, so callers can tell *why* a token failed. Default `false`.
 - `fetch?: typeof fetch` — custom fetch; defaults to the global.
-- `minRefreshInterval?: number` — minimum ms between JWKS refreshes triggered by an unknown `kid`. Guards the upstream endpoint against refresh storms from streams of unknown-`kid` tokens. Default `0` (refresh on every miss; concurrent misses share one request).
+- `minRefreshInterval?: number` — minimum ms between per-issuer JWKS refreshes triggered by an unknown `kid`. Guards the upstream endpoint against refresh storms from streams of unknown-`kid` tokens. Default `30000`.
 - `clockTolerance?: number` — allowed clock skew in seconds for `exp` / `nbf`. Default `0`.
 
-`SUPPORTED_ALGORITHMS` is also exported from the main module for reference.
+`SUPPORTED_ALGORITHMS` and `CognitoAuthError` are also exported from the main module. The returned validator carries `prime(): Promise<void>` to pre-fetch every issuer's JWKS (e.g. to avoid first-request latency on a serverless cold start).
 
-Returns `(token: string) => Promise<payload | null>`. The payload is the decoded JWT body (standard Cognito claims such as `sub`, `iss`, `token_use`, `exp`, plus pool-specific claims like `cognito:username`, `cognito:groups`, `email`).
+Returns `(token: string) => Promise<payload | null>` (or, under `throwOnError`, resolves the payload / throws `CognitoAuthError`). The payload is the decoded JWT body (standard Cognito claims such as `sub`, `iss`, `token_use`, `exp`, plus pool-specific claims like `cognito:username`, `cognito:groups`, `email`).
+
+### Security: set `audience` and `tokenUse`
+
+Verifying the signature proves the token is genuinely from the pool — not that it was issued *for your app* or is the *right type*. For any pool with more than one app client, set both `audience` (your app client id(s)) and `tokenUse` (usually `'access'`). Without `audience`, a token minted for any app client in the same user pool is accepted; without `tokenUse`, an id token (which also carries `cognito:groups`) can be used where an access token is expected. Tokens must be the bare JWT — there is no `Bearer ` handling; strip it upstream with `header.replace(/^Bearer\s+/i, '')` if needed.
 
 ### Typical usage in a request handler
 

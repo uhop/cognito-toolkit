@@ -1,4 +1,4 @@
-import type {CognitoUser, JwtHeader, Algorithm} from './verify.js';
+import type {CognitoUser, JwtHeader, Algorithm, CognitoAuthErrorCode} from './verify.js';
 
 /** A single Cognito user pool to validate tokens against. */
 export interface PoolOptions {
@@ -24,28 +24,53 @@ export interface GetUserOptions {
    */
   algorithms?: Algorithm[] | string[] | ((alg: string, header: JwtHeader) => boolean);
   /**
-   * Optional gate run after the signature and `exp` / `nbf` checks pass.
-   * Return a falsy value (or throw) to reject the token. Use it for
-   * provider-specific claims such as `token_use`, `aud`, or `client_id`.
+   * Required app client id(s). When set, the token's `aud` (id tokens) or
+   * `client_id` (access tokens) must match one of these — rejecting tokens
+   * minted for a *different* app client in the same pool. **Strongly
+   * recommended** for any pool with more than one app client.
+   */
+  audience?: string | string[];
+  /**
+   * Required `token_use` value(s) — `'access'` and/or `'id'`. When set, rejects
+   * a token of the wrong type (e.g. an id token where an access token is
+   * expected). Recommended.
+   */
+  tokenUse?: 'access' | 'id' | Array<'access' | 'id'>;
+  /**
+   * Optional gate run after the signature, `exp` / `nbf`, `tokenUse`, and
+   * `audience` checks pass. Return a falsy value (or throw) to reject. Use it
+   * for further claims such as `scope` or custom attributes.
    */
   validate?: (payload: CognitoUser, header: JwtHeader) => boolean | Promise<boolean>;
+  /**
+   * When `true`, the validator throws a `CognitoAuthError` (with a `.code`)
+   * instead of resolving `null` on failure — so callers can distinguish e.g.
+   * an expired token from an invalid one. Defaults to `false`.
+   */
+  throwOnError?: boolean;
   /** Custom `fetch` implementation. Defaults to the global `fetch`. */
   fetch?: typeof fetch;
   /**
-   * Minimum interval, in milliseconds, between JWKS refreshes triggered by an
-   * unknown `kid` (key-rotation handling). Defaults to `0` — refresh on every
-   * miss, with concurrent misses sharing a single request.
+   * Minimum interval, in milliseconds, between per-issuer JWKS refreshes
+   * triggered by an unknown `kid` (key-rotation handling). Defaults to `30000`.
    */
   minRefreshInterval?: number;
   /** Allowed clock skew, in seconds, for `exp` / `nbf` checks. Defaults to `0`. */
   clockTolerance?: number;
 }
 
-export type {CognitoUser, JwtHeader, Algorithm};
-export {SUPPORTED_ALGORITHMS} from './verify.js';
+export type {CognitoUser, JwtHeader, Algorithm, CognitoAuthErrorCode};
+export {SUPPORTED_ALGORITHMS, CognitoAuthError} from './verify.js';
 
-/** Validates a token and resolves to the decoded payload, or `null`. */
-export type GetUser = (token: string) => Promise<CognitoUser | null>;
+/**
+ * Validates a token and resolves to the decoded payload, or `null` (or throws a
+ * `CognitoAuthError` when `throwOnError` is set). Carries a `prime()` to
+ * pre-fetch JWKS ahead of the first request.
+ */
+export type GetUser = ((token: string) => Promise<CognitoUser | null>) & {
+  /** Pre-fetch every configured issuer's JWKS (e.g. to avoid first-request latency). */
+  prime(): Promise<void>;
+};
 
 /**
  * Builds a token validator for one or more Cognito user pools (or any OIDC
@@ -53,9 +78,10 @@ export type GetUser = (token: string) => Promise<CognitoUser | null>;
  *
  * The returned function takes a JWT (an id or access token) and resolves to the
  * decoded payload once the algorithm policy, signature, issuer, `kid`,
- * `exp` / `nbf`, and optional `validate` hook all pass — otherwise `null`.
- * JWKS keys are fetched lazily on first use and refreshed automatically when a
- * pool rotates its signing keys.
+ * `exp` / `nbf`, optional `tokenUse` / `audience`, and optional `validate` hook
+ * all pass — otherwise `null` (or a thrown `CognitoAuthError` under
+ * `throwOnError`). JWKS keys are fetched lazily per issuer and refreshed
+ * automatically on key rotation.
  */
 export default function makeGetUser(options: PoolOptions | PoolOptions[], globalOptions?: GetUserOptions): GetUser;
 export {makeGetUser};

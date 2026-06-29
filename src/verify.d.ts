@@ -17,10 +17,30 @@ export type Algorithm = 'RS256' | 'RS384' | 'RS512' | 'PS256' | 'PS384' | 'PS512
 /** Every algorithm name `verifyToken` knows how to verify. */
 export const SUPPORTED_ALGORITHMS: Algorithm[];
 
+/** Why a token was rejected. The `code` on a thrown `CognitoAuthError`. */
+export type CognitoAuthErrorCode =
+  | 'malformed_token'
+  | 'algorithm_not_allowed'
+  | 'unknown_issuer'
+  | 'unknown_key'
+  | 'invalid_signature'
+  | 'token_expired'
+  | 'token_not_yet_valid'
+  | 'wrong_token_use'
+  | 'wrong_audience'
+  | 'rejected_by_validate';
+
+/** Thrown on a verification failure (surfaced only when `throwOnError` is set). */
+export class CognitoAuthError extends Error {
+  readonly name: 'CognitoAuthError';
+  readonly code: CognitoAuthErrorCode;
+  constructor(message: string, code: CognitoAuthErrorCode);
+}
+
 export interface VerifyOptions {
   /** Allowed issuer URLs; `payload.iss` must be one of them. */
   issuers: string[];
-  /** Key store used to resolve the signing key by `kid`. */
+  /** Per-issuer key store used to resolve the signing key by `kid`. */
   keyStore: KeyStore;
   /** Predicate gating the token's `alg` before any key lookup. */
   isAlgorithmAllowed: (alg: string, header: JwtHeader) => boolean;
@@ -28,13 +48,18 @@ export interface VerifyOptions {
   validate?: (payload: CognitoUser, header: JwtHeader) => boolean | Promise<boolean>;
   /** Allowed clock skew, in seconds, for `exp` / `nbf`. Defaults to `0`. */
   clockTolerance?: number;
+  /** Allowed `aud` (id tokens) / `client_id` (access tokens) values. */
+  audience?: string[];
+  /** Allowed `token_use` values (`'access'` / `'id'`). */
+  tokenUse?: string[];
 }
 
 /**
  * Verifies a JWT: the `alg` is gated by `isAlgorithmAllowed` (never read from
- * the header to *select* the algorithm), then the signature (against the JWKS
- * key for its `kid`), `iss`, `exp` / `nbf`, and an optional `validate` hook.
- * Resolves to the decoded payload, or `null` on any failure.
+ * the header to *select* the algorithm), then the signature (against the
+ * claimed issuer's JWKS key for its `kid`), `iss`, `exp` / `nbf`, optional
+ * `tokenUse` / `audience`, and an optional `validate` hook. Resolves to the
+ * decoded payload, or throws a `CognitoAuthError`.
  */
-export function verifyToken(token: string, options: VerifyOptions): Promise<CognitoUser | null>;
+export function verifyToken(token: string, options: VerifyOptions): Promise<CognitoUser>;
 export default verifyToken;

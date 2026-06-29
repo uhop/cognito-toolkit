@@ -1,6 +1,6 @@
 # AGENTS.md — cognito-toolkit (v2)
 
-> `cognito-toolkit` is a **zero-runtime-dependency, ESM-only** micro-library that validates AWS Cognito JWTs (id / access tokens) for authentication & authorization in web apps. The main export `makeGetUser(pools, options?)` returns an async validator that fetches the pool's JWKS, verifies the signature under a configurable algorithm policy (default `['RS256']`, what Cognito uses), checks issuer / `kid` / `exp` / `nbf` plus an optional `validate` hook, and resolves to the decoded payload — or `null`. It also works against non-Cognito OIDC issuers via `PoolOptions.issuer` + `algorithms`. Two `utils/` helpers fetch and cache OAuth2 `client_credentials` access tokens. Verification is fully offline (no AWS SDK, no network except the public JWKS fetch); it builds on Node built-ins — `crypto`, `fetch`, `util.debuglog`.
+> `cognito-toolkit` is a **zero-runtime-dependency, ESM-only** micro-library that validates AWS Cognito JWTs (id / access tokens) for authentication & authorization in web apps. The main export `makeGetUser(pools, options?)` returns an async validator that fetches each issuer's JWKS, verifies the signature under a configurable algorithm policy (default `['RS256']`, what Cognito uses), checks issuer / `kid` / `exp` / `nbf` plus optional `audience` (`aud` / `client_id`), `tokenUse`, and a `validate` hook, and resolves to the decoded payload — or `null` (or a thrown typed `CognitoAuthError` under `throwOnError`). The returned validator carries `prime()` to pre-fetch JWKS. It also works against non-Cognito OIDC issuers via `PoolOptions.issuer` + `algorithms`. Two `utils/` helpers fetch and cache OAuth2 `client_credentials` access tokens. Verification is fully offline (no AWS SDK, no network except the public JWKS fetch); it builds on Node built-ins — `crypto`, `fetch`, `util.debuglog`. (It is intentionally **not** a competitor to AWS's `aws-jwt-verify` on the bare-verification surface — its edge is the zero-dep fleet fit plus the companion Koa/Express middleware.)
 
 For published API docs see the [wiki](https://github.com/uhop/cognito-toolkit/wiki).
 
@@ -37,8 +37,8 @@ There is no build step. The published tarball ships `src/` (the `.js` + `.d.ts` 
 cognito-toolkit/
 ├── src/                              # Published code (ESM .js + .d.ts sidecars)
 │   ├── index.js / index.d.ts         # makeGetUser — default + named export
-│   ├── verify.js / verify.d.ts       # verifyToken — alg policy + sig + iss / kid / exp / nbf / validate
-│   ├── key-store.js / key-store.d.ts # JWKS fetch + per-kid cache + rotation refresh
+│   ├── verify.js / verify.d.ts       # verifyToken (throws CognitoAuthError) — alg/sig/iss/kid/exp/nbf/tokenUse/aud/validate
+│   ├── key-store.js / key-store.d.ts # per-issuer JWKS cache + rotation refresh + prime()
 │   ├── debug.js / debug.d.ts         # util.debuglog('cognito-toolkit') channel
 │   └── utils/
 │       ├── fetch-token.js / .d.ts            # internal client_credentials POST helper
@@ -46,8 +46,9 @@ cognito-toolkit/
 │       └── renewable-access-token.js / .d.ts # createRenewableAccessToken — timer-renewed token
 ├── tests/
 │   ├── test-verify.js                # verify path: valid / expired / nbf / wrong-iss /
-│   │                                 #   unknown-kid / tampered / alg:none / rotation / multi-pool
+│   │                                 #   unknown-kid / tampered / alg:none / rotation / multi-pool / per-issuer binding
 │   ├── test-algorithms.js            # algorithm policy (allowlist / predicate) + validate hook + ES256
+│   ├── test-claims.js                # audience / tokenUse / throwOnError (typed codes) / prime()
 │   ├── test-tokens.js                # lazy + renewable access-token holders
 │   ├── test-smoke.js                 # ESM export surface
 │   ├── test-smoke.cjs                # require(esm) smoke (Node-only)
@@ -76,10 +77,10 @@ The published tarball ships **`src/`, `README.md`, `LICENSE`, `llms.txt`, `llms-
 
 ## Architecture
 
-`makeGetUser(pools, globalOptions?)` is the composition root. It normalizes `pools` to an array, derives each issuer URL (`https://cognito-idp.<region>.amazonaws.com/<userPoolId>`, or an explicit `issuer` override), builds one shared **key store**, and returns the validator `token => Promise<payload | null>`.
+`makeGetUser(pools, globalOptions?)` is the composition root. It normalizes `pools` to an array, derives each issuer URL (`https://cognito-idp.<region>.amazonaws.com/<userPoolId>`, or an explicit `issuer` override), builds one **key store**, and returns the validator `token => Promise<payload | null>` (with a `prime()` method). The validator catches `CognitoAuthError` from `verify.js` and maps it to `null` — unless `throwOnError` is set, in which case it rethrows; any non-`CognitoAuthError` (a real bug) always propagates.
 
-- **`key-store.js`** owns JWKS state. `get(kid)` returns the cached `KeyObject` or, on a miss, refreshes the JWKS (deduped via a single in-flight promise, rate-limited by `minRefreshInterval`). A cache miss is the **key-rotation** signal — Cognito rotates signing keys, and the v1 "fetch once, cache forever" behavior is exactly what this fixes.
-- **`verify.js`** is pure given a key store. It splits the JWT, decodes the header / payload (rejecting malformed input without throwing), gates `header.alg` through `isAlgorithmAllowed` and the `ALGORITHMS` map (asymmetric-only), checks `iss` ∈ issuers, resolves the key by `kid`, verifies the signature with `crypto.verify` (the digest + padding / `dsaEncoding` come from the matched algorithm spec, not the header), checks `exp` / `nbf` (with optional `clockTolerance`), and finally runs the optional `validate(payload, header)` hook. Any failure → `null`.
+- **`key-store.js`** owns JWKS state **per issuer** (`Map<issuer, {keys, lastRefresh, inFlight}>`) — keys are never merged into a shared `kid` map, so a token is only verified with a key published by the issuer it claims. `get(issuer, kid)` returns the cached `KeyObject` or, on a miss, refreshes that issuer's JWKS (deduped via a single in-flight promise, rate-limited by `minRefreshInterval`, default 30s to bound unknown-`kid` storms). A miss is the **key-rotation** signal. `prime()` pre-fetches every issuer's JWKS.
+- **`verify.js`** is pure given a key store, and **throws `CognitoAuthError(message, code)`** on any failure (the wrapper decides null-vs-throw). It splits the JWT, decodes the header / payload, gates `header.alg` through `isAlgorithmAllowed` and the `ALGORITHMS` map (asymmetric-only), checks `iss` ∈ issuers, resolves the key by `(payload.iss, kid)`, verifies the signature with `crypto.verify` (digest + padding / `dsaEncoding` from the matched algorithm spec, not the header), checks `exp` / `nbf` (with optional `clockTolerance`), then optional `tokenUse`, `audience` (`aud` for id tokens / `client_id` for access tokens), and the `validate(payload, header)` hook.
 - **`utils/`** are unrelated to verification — they obtain _outbound_ `client_credentials` access tokens from a Cognito domain's `/oauth2/token`. Both are **factories** returning per-instance closures (`createLazyAccessToken`, `createRenewableAccessToken`); the renewable one `unref`s its refresh timer so it never holds the process open.
 
 Testing is offline by design: `tests/helpers/mock-cognito.js` is a real loopback HTTP server that mints RS256 JWTs with the right claims, serves the matching JWKS, answers `/oauth2/token`, and can rotate keys or sign with a foreign key — so every verify branch (including rotation and tamper) is exercised deterministically with no Docker and no AWS account.

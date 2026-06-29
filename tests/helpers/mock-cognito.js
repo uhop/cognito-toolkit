@@ -47,10 +47,12 @@ export const startMockCognito = async ({region = 'us-east-1', userPoolId = 'us-e
   let current = makeKey(kid(1), alg);
   let served = [current];
   let tokenRequests = 0;
+  let jwksRequests = 0;
 
   const server = http.createServer((req, res) => {
     const {pathname} = new URL(req.url, 'http://localhost');
     if (req.method === 'GET' && pathname.endsWith('/.well-known/jwks.json')) {
+      ++jwksRequests;
       res.setHeader('content-type', 'application/json');
       return res.end(JSON.stringify({keys: served.map(k => k.jwk)}));
     }
@@ -84,6 +86,7 @@ export const startMockCognito = async ({region = 'us-east-1', userPoolId = 'us-e
       return current.kid;
     },
     tokenRequests: () => tokenRequests,
+    jwksRequests: () => jwksRequests,
     close: () => new Promise(resolve => server.close(resolve))
   };
 };

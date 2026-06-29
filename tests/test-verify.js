@@ -82,7 +82,9 @@ test('verify: an unsigned alg:none token is rejected', async t => {
 
 test('verify: rotated signing keys are picked up automatically', async t => {
   const pool = await startMockCognito();
-  const getUser = makeGetUser({issuer: pool.issuer});
+  // minRefreshInterval: 0 so the rotation is observed immediately (the default
+  // throttles refreshes to bound unknown-kid JWKS storms).
+  const getUser = makeGetUser({issuer: pool.issuer}, {minRefreshInterval: 0});
   t.ok(await getUser(pool.sign()), 'original key works (and is cached)');
   pool.rotateKeys();
   t.ok(await getUser(pool.sign()), 'token signed by the new key verifies after refresh');
@@ -95,6 +97,17 @@ test('verify: multiple pools accept tokens from any of them', async t => {
   const getUser = makeGetUser([{issuer: a.issuer}, {issuer: b.issuer}]);
   t.ok(await getUser(a.sign()), 'pool A token verifies');
   t.ok(await getUser(b.sign()), 'pool B token verifies');
+  await a.close();
+  await b.close();
+});
+
+test('verify: a token claiming one issuer but signed by another pool is rejected', async t => {
+  const a = await startMockCognito({userPoolId: 'us-east-1_AAA'});
+  const b = await startMockCognito({userPoolId: 'us-east-1_BBB'});
+  const getUser = makeGetUser([{issuer: a.issuer}, {issuer: b.issuer}]);
+  // Signed by pool B's real key, but the payload claims pool A as the issuer.
+  const forged = b.sign({claims: {iss: a.issuer}});
+  t.equal(await getUser(forged), null, 'per-issuer key binding rejects the cross-pool token');
   await a.close();
   await b.close();
 });
