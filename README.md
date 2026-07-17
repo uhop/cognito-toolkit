@@ -265,8 +265,7 @@ const getUser = makeGetUser(CognitoJwtVerifier.create({userPoolId: 'us-east-1_X'
 
 ## Release notes
 
-Details per release live in the wiki's [Release notes](https://github.com/uhop/cognito-toolkit/wiki/Release-notes).
-
+- **3.1.0** _New middleware ports: `cognito-toolkit/fetch` (Bun, Deno, Cloudflare Workers, …) and `cognito-toolkit/lambda` (API Gateway, Function URLs, ALB); renewable tokens survive failed renewals (`retryInterval` + `onError`); `AlbJwtVerifier` re-exported; browser-side flow documented in the wiki._
 - **3.0.0** _Breaking reshape: verification delegated to AWS's [aws-jwt-verify]; the Koa & Express middlewares absorbed as `cognito-toolkit/koa` / `cognito-toolkit/express` with per-instance `makeAuth` bundles._
 - **2.0.0** _Zero-dependency rewrite of the 1.x verifier — never published; superseded by 3.0.0._
 - 1.0.6 _Updated dependencies._
@@ -276,6 +275,8 @@ Details per release live in the wiki's [Release notes](https://github.com/uhop/c
 - 1.0.2 _Updated dependencies._
 - 1.0.1 _Added support for multiple pools._
 - 1.0.0 _The initial public release._
+
+The full release notes are in the wiki: [Release notes](https://github.com/uhop/cognito-toolkit/wiki/Release-notes).
 
 ## License
 

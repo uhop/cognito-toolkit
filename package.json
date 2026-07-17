@@ -1,6 +1,6 @@
 {
   "name": "cognito-toolkit",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "AWS Cognito auth for web apps: Koa & Express middleware (guards, auth cookie) built on the official aws-jwt-verify, plus client-credentials token utilities.",
   "type": "module",
   "main": "./src/index.js",
