@@ -2,15 +2,11 @@
 
 [npm-img]: https://img.shields.io/npm/v/cognito-toolkit.svg
 [npm-url]: https://npmjs.org/package/cognito-toolkit
+[aws-jwt-verify]: https://github.com/awslabs/aws-jwt-verify
 
-Validate [AWS Cognito](https://aws.amazon.com/cognito/) JWTs (id / access tokens) for authentication & authorization — **zero runtime dependencies, ESM-only**. Point it at a user pool, hand it a token, get back the decoded payload or `null`. The signature is verified against the pool's JWKS under a configurable algorithm policy (default RS256, what Cognito uses), keys are refreshed automatically on rotation, and the whole thing runs on Node built-ins — no AWS SDK. It also works against other OIDC issuers via the `issuer` + `algorithms` options.
+[AWS Cognito](https://aws.amazon.com/cognito/) authentication & authorization for web apps: a middleware family for **Koa** and **Express** with route guards and an auth-cookie convenience, built on AWS's official [aws-jwt-verify] verifier, plus utilities for obtaining machine-to-machine (`client_credentials`) access tokens. ESM-only, one runtime dependency ([aws-jwt-verify], itself dependency-free).
 
-Companion middleware built on this toolkit:
-
-- Express: https://github.com/uhop/cognito-express-middleware
-- Koa: https://github.com/uhop/koa-cognito-middleware
-
-> **v2 is a breaking, ESM-only rewrite of v1.** The `makeGetUser` contract is unchanged; the import and the `utils/` API changed. See [Migrating from v1](#migrating-from-v1).
+> **v3 is a breaking reshape.** The homegrown verifier of 1.x is retired — token verification is delegated to [aws-jwt-verify], AWS's own zero-dependency verifier. The sister packages [koa-cognito-middleware](https://github.com/uhop/koa-cognito-middleware) and [cognito-express-middleware](https://github.com/uhop/cognito-express-middleware) moved here as the subpath exports `cognito-toolkit/koa` and `cognito-toolkit/express`; the standalone packages are frozen re-exports. See [Migrating](#migrating).
 
 ## Install
 
@@ -18,94 +14,108 @@ Companion middleware built on this toolkit:
 npm install cognito-toolkit
 ```
 
-Requires Node 20+ (also runs on the latest Bun and Deno). ESM-only; CommonJS consumers load it via `require(esm)` and the named export.
+Requires Node 20+ (also runs on the latest Bun and Deno). ESM-only; CommonJS consumers load it via `require(esm)` and the named exports.
 
 ## Usage
 
-```js
-import makeGetUser from 'cognito-toolkit';
+### Koa
 
-// build a validator once
-const getUser = makeGetUser({
-  region: 'us-east-1',
-  userPoolId: 'us-east-1_MY_USER_POOL'
+```js
+import Koa from 'koa';
+import Router from 'koa-router';
+import {CognitoJwtVerifier} from 'cognito-toolkit';
+import {makeAuth} from 'cognito-toolkit/koa';
+
+// configure verification on the verifier — pools, app clients, token type
+const verifier = CognitoJwtVerifier.create({
+  userPoolId: 'us-east-1_MY_USER_POOL',
+  clientId: 'my-app-client-id',
+  tokenUse: 'access'
 });
 
-// ...then on every request, with a token from a header or cookie:
-const user = await getUser(authHeader || authCookie);
+const auth = makeAuth({verifier});
 
-if (user) {
-  console.log('Authenticated user:\n' + JSON.stringify(user, null, 2));
-} else {
-  console.log('User was not authenticated.');
-}
+const app = new Koa();
+app.use(auth.getUser); // ctx.state.user = decoded payload or null
+
+const router = new Router();
+router.get('/a', ctx => (ctx.body = 'all allowed'));
+router.get('/b', auth.isAuthenticated, ctx => (ctx.body = 'all authenticated'));
+router.post('/c', auth.hasGroup('user-type/writers'), ctx => (ctx.body = 'only the writers group'));
+router.post('/d', auth.hasScope('writers'), ctx => (ctx.body = 'only with a writers scope'));
+app.use(router.routes()).use(router.allowedMethods());
 ```
 
-Multiple pools — a token from any of them is accepted:
+### Express
 
 ```js
-const getUser = makeGetUser([
-  {region: 'us-east-1', userPoolId: 'us-east-1_AAA'},
-  {region: 'us-west-2', userPoolId: 'us-west-2_BBB'}
-]);
+import express from 'express';
+import cookieParser from 'cookie-parser';
+import {CognitoJwtVerifier} from 'cognito-toolkit';
+import {makeAuth} from 'cognito-toolkit/express';
+
+const verifier = CognitoJwtVerifier.create({
+  userPoolId: 'us-east-1_MY_USER_POOL',
+  clientId: 'my-app-client-id',
+  tokenUse: 'access'
+});
+
+const auth = makeAuth({verifier});
+
+const app = express();
+app.use(cookieParser()); // only needed for the auth-cookie features
+app.use(auth.getUser); // req.user = decoded payload or null
+
+app.get('/a', (req, res) => res.send('all allowed'));
+app.get('/b', auth.isAuthenticated, (req, res) => res.send('all authenticated'));
+app.post('/c', auth.hasGroup('user-type/writers'), (req, res) => res.send('only the writers group'));
+app.post('/d', auth.hasScope('writers'), (req, res) => res.send('only with a writers scope'));
 ```
 
-CommonJS:
+### Framework-free
 
 ```js
-const {makeGetUser} = require('cognito-toolkit');
+import {makeGetUser, CognitoJwtVerifier} from 'cognito-toolkit';
+
+const verifier = CognitoJwtVerifier.create({userPoolId: 'us-east-1_MY_USER_POOL', clientId: 'my-app-client-id', tokenUse: 'access'});
+const getUser = makeGetUser(verifier);
+
+const user = await getUser(tokenFromAnywhere); // decoded payload or null — never throws on a bad token
 ```
+
+A rule of thumb for custom validators: an [isAllowed](#the-middleware-bundle) rule covers per-route logic; anything about the _token itself_ (audience, token use, extra claim checks) belongs on the verifier — see the [aws-jwt-verify] documentation for `customJwtCheck`, multi-pool setups, and the generic `JwtVerifier` for non-Cognito OIDC issuers. Both verifier classes are re-exported here for convenience.
 
 Enable debug logging with the `NODE_DEBUG=cognito-toolkit` environment variable.
 
 ## API
 
-### `makeGetUser(pools, globalOptions?)`
+### `makeAuth(options)` — `cognito-toolkit/koa` and `cognito-toolkit/express`
 
-Returns an async validator `(token) => Promise<payload | null>`.
+Builds a middleware bundle bound to one verifier and one options set. There are no module-level singletons — create as many bundles as you need. Options:
 
-`pools` is one pool object or an array of them. Each pool is either a Cognito pool:
+- `verifier` — **required.** An [aws-jwt-verify] verifier (`CognitoJwtVerifier` / `JwtVerifier`), or anything with an async `verify(token)` that resolves to a payload and throws on an invalid token.
+- `authHeader` — header carrying the **bare** token (no `Bearer` stripping — see [Security](#security)). A falsy value disables the header source. Default: `'Authorization'`.
+- `authCookie` — cookie carrying the token; also the cookie written by the auth-cookie helpers. A falsy value disables both. Default: `'auth'`. (Express reads it from `req.cookies` — add [cookie-parser](https://www.npmjs.com/package/cookie-parser).)
+- `source` — custom token source: `ctx => token` (Koa) / `req => token` (Express). Overrides the header / cookie lookups.
+- `setAuthCookieOptions` — when set (an object of cookie options, `{}` is fine), every authenticated request refreshes the auth cookie automatically.
+- `stateUserProperty` — where the user lands: `ctx.state[prop]` (Koa) / `req[prop]` (Express). Default: `'user'`.
+- `throwOnError` — verification failures throw (as [aws-jwt-verify] error classes) instead of yielding an anonymous request. Default: `false`.
 
-- `region` &mdash; **required** string, an AWS region such as `'us-east-1'`.
-- `userPoolId` &mdash; **required** string, a user pool id such as `'us-east-1_MY_USER_POOL'`.
+### The middleware bundle
 
-…or an explicit issuer (for a custom OIDC provider or testing):
+- `getUser` — authenticates every request: the decoded payload (or `null`) is placed on `ctx.state.user` / `req.user` (see `stateUserProperty`). An authenticated user additionally carries `_token` (the raw token) and a bound `setAuthCookie` method.
+- `isAuthenticated` — guard: 401 unless a user is present.
+- `hasGroup(group)` — guard: 401 without a user, 403 unless the `cognito:groups` claim contains `group`.
+- `hasScope(scope)` — guard: 401 without a user, 403 unless the space-separated `scope` claim contains `scope`.
+- `isAllowed(validator)` — guard with a custom async rule `(ctx | req, groups, scopes) => boolean`; a falsy result yields 401 (anonymous) or 403 (authenticated).
+- `setAuthCookie(ctx, options?)` / `setAuthCookie(req, res, options?)` — manually persist the current user's token into the auth cookie (skipped when the cookie already holds it). The cookie expires with the token; the domain defaults to the request's hostname.
+- `stateUserProperty` — the resolved property name (for generic code).
 
-- `issuer` &mdash; full issuer URL, replacing `region` + `userPoolId`. The JWKS is read from `${issuer}/.well-known/jwks.json`.
+The auth cookie enables a "login once" flow: authenticate via a header once (e.g. after an OAuth2 redirect), persist the token as a cookie, and let subsequent requests authenticate from the cookie automatically.
 
-`globalOptions` (optional):
+### `makeGetUser(verifier, options?)`
 
-- `audience` &mdash; **strongly recommended.** App client id(s) (string or array). The token's `aud` (id tokens) or `client_id` (access tokens) must match one of them — rejecting tokens minted for a _different_ app client in the same pool. Off by default; see [Security](#security).
-- `tokenUse` &mdash; **recommended.** Required `token_use` value(s): `'access'`, `'id'`, or an array. Rejects a token of the wrong type (e.g. an id token where an access token is expected). Off by default.
-- `algorithms` &mdash; allowed signing algorithms: an array of JWA names (e.g. `['RS256']`) **or** a predicate `(alg, header) => boolean`. Default: `['RS256']`. Only asymmetric algorithms are verifiable (`RS256/384/512`, `PS256/384/512`, `ES256/384/512` — exported as `SUPPORTED_ALGORITHMS`); symmetric (`HS*`) and `none` are always rejected, so widening this list can never enable an algorithm-confusion attack.
-- `validate` &mdash; optional `(payload, header) => boolean | Promise<boolean>` gate, run after all built-in checks pass. Return a falsy value (or throw) to reject. Use it for further claims such as `scope` or custom attributes.
-- `throwOnError` &mdash; when `true`, the validator throws a `CognitoAuthError` (with a `.code` such as `'token_expired'` or `'wrong_audience'`) instead of resolving `null`, so you can tell _why_ a token failed. Default: `false`.
-- `fetch` &mdash; custom `fetch` implementation. Default: the global `fetch`.
-- `minRefreshInterval` &mdash; minimum milliseconds between per-issuer JWKS refreshes triggered by an unknown `kid` (key-rotation handling). Default: `30000`.
-- `clockTolerance` &mdash; allowed clock skew in seconds for `exp` / `nbf`. Default: `0`.
-
-The validator resolves to the decoded JWT payload when the algorithm policy, signature, issuer, `kid`, `exp` / `nbf`, `tokenUse`, `audience`, and `validate` hook all check out; otherwise `null` (or a thrown `CognitoAuthError` under `throwOnError`). JWKS keys are fetched lazily per issuer and refreshed automatically on key rotation; call `getUser.prime()` to pre-fetch them (e.g. to avoid first-request latency on a serverless cold start). The token header's `alg` is only ever checked against your `algorithms` policy — never used to choose how the token is verified.
-
-## Security
-
-Validation proves a token is genuinely from the pool — it does **not**, by itself, prove the token was issued _for your app_ or is the _right type_. For any pool with more than one app client, set both:
-
-- **`audience`** — restrict to your app client id(s). Without it, a token minted for **any** app client in the same user pool (including a low-trust or attacker-controlled one) is accepted.
-- **`tokenUse`** — APIs almost always want `'access'`; pin it so an **id** token (meant for the client, and which also carries `cognito:groups`) can't be used in its place.
-
-```js
-const getUser = makeGetUser({region: 'us-east-1', userPoolId: 'us-east-1_MY_USER_POOL'}, {audience: process.env.APP_CLIENT_ID, tokenUse: 'access'});
-```
-
-Tokens must be the **bare JWT** — there is no `Authorization: Bearer ` handling. If your source sends that header, strip the prefix first: `header.replace(/^Bearer\s+/i, '')`.
-
-### Other OIDC providers
-
-Cognito is the focus, but any OIDC issuer that publishes a JWKS works: pass `issuer` instead of `region` + `userPoolId`, and set `algorithms` to whatever it signs with.
-
-```js
-const getUser = makeGetUser({issuer: 'https://accounts.example.com'}, {algorithms: ['ES256', 'RS256'], validate: p => p.aud === 'my-api'});
-```
+The framework-free core (default export): wraps a verifier into `token => Promise<payload | null>`. An absent token or a failed verification resolves to `null`; with `options.throwOnError` verification failures throw instead (an absent token still resolves to `null`). The returned function carries `prime()` — pre-fetches the verifier's JWKS (e.g. to avoid first-request latency on a serverless cold start; maps to the verifier's `hydrate()`).
 
 ### `utils/lazy-access-token`
 
@@ -124,8 +134,8 @@ const token = await auth.authorize(); // cached until shortly before expiry
 // use token.access_token immediately; call authorize() again when you need it
 ```
 
-- `authorize()` &mdash; returns a cached unexpired token or fetches a fresh one.
-- `getToken()` &mdash; returns the current token (or `null`) without fetching.
+- `authorize()` — returns a cached unexpired token or fetches a fresh one.
+- `getToken()` — returns the current token (or `null`) without fetching.
 
 ### `utils/renewable-access-token`
 
@@ -146,21 +156,57 @@ const token = auth.getToken(); // always read the live token
 auth.cancelRenewal(true);
 ```
 
-- `retrieveToken()` &mdash; fetches a token and schedules a refresh shortly before expiry. The refresh timer is `unref`ed, so it never keeps the process alive on its own.
-- `cancelRenewal(clearToken?)` &mdash; cancels the scheduled refresh; pass `true` to also drop the cached token.
-- `getToken()` &mdash; returns the current token (or `null`). The renewal swaps it out over time, so always read it fresh.
+- `retrieveToken()` — fetches a token and schedules a refresh shortly before expiry. The refresh timer is `unref`ed, so it never keeps the process alive on its own.
+- `cancelRenewal(clearToken?)` — cancels the scheduled refresh; pass `true` to also drop the cached token.
+- `getToken()` — returns the current token (or `null`). The renewal swaps it out over time, so always read it fresh.
 
 Each holder keeps its own state — create one per credential set.
 
-## Migrating from v1
+## Security
 
-- **Import.** v1 exported the function as the whole CommonJS module (`const makeGetUser = require('cognito-toolkit')`). v2 is ESM-only: `import makeGetUser from 'cognito-toolkit'`, or `const {makeGetUser} = require('cognito-toolkit')` from CommonJS. The `makeGetUser(pools)` arguments and return value are unchanged.
-- **Token utilities are now factories.** v1's module-level `setCredentials()` / `authorize()` / `getToken()` becomes `createLazyAccessToken({url, clientId, secret})`; v1's `retrieveToken(url, id, secret)` / `cancelRenewal()` / `getToken()` becomes `createRenewableAccessToken({url, clientId, secret})`. This lets you hold more than one credential set per process.
-- **Dependencies removed.** `jsonwebtoken`, `jwk-to-pem`, and `debug` are gone — verification now uses Node's `crypto`, and logging uses `NODE_DEBUG=cognito-toolkit`.
+Verification is [aws-jwt-verify]'s job — algorithm policy, signature, issuer, expiry, and claim checks are all theirs (and battle-tested). Two knobs deserve emphasis because they are **on the verifier**, not on this package:
+
+- **`clientId`** — restrict to your app client id(s). Without it, a token minted for **any** app client in the same user pool (including a low-trust one) is accepted.
+- **`tokenUse`** — APIs almost always want `'access'`; pin it so an **id** token (meant for the client) can't be used in its place.
+
+Tokens must be the **bare JWT** — there is no `Authorization: Bearer ` handling. If your clients send that prefix, strip it in a custom `source`:
+
+```js
+const auth = makeAuth({verifier, source: ctx => (ctx.headers.authorization || '').replace(/^Bearer\s+/i, '') || null});
+```
+
+## Migrating
+
+### From `koa-cognito-middleware` / `cognito-express-middleware` 1.x
+
+The features are all here; the wiring changed:
+
+- **Import** — `import {makeAuth} from 'cognito-toolkit/koa'` (or `/express`) instead of requiring the standalone package.
+- **Pool options → a verifier.** `getUser({region, userPoolId})` becomes `makeAuth({verifier: CognitoJwtVerifier.create({userPoolId, clientId, tokenUse})})` — note that `clientId` is required by aws-jwt-verify (pass `null` to explicitly opt out) and that pinning `tokenUse` is now first-class.
+- **Guards moved off the function.** `getUser.isAuthenticated` / `hasGroup` / `hasScope` / `isAllowed` and `getUser.stateUserProperty` were statics shared by every consumer of the module; they are now members of the per-instance bundle returned by `makeAuth` — same names, same semantics, no cross-app coupling.
+- The auth-cookie behavior (`authCookie`, `setAuthCookieOptions`, `user.setAuthCookie`) is preserved. The cookie domain now defaults to the request **hostname** — the old `host` default broke on Express 5, which keeps the port on `req.host`.
+
+### From `cognito-toolkit` 1.x
+
+1.x exported `makeGetUser(pools, options?)` with a homegrown verifier behind it. In v3 you build the verifier yourself and hand it over:
+
+```js
+// 1.x
+const getUser = makeGetUser({region: 'us-east-1', userPoolId: 'us-east-1_X'}, {audience: 'client', tokenUse: 'access'});
+// 3.x
+const getUser = makeGetUser(CognitoJwtVerifier.create({userPoolId: 'us-east-1_X', clientId: 'client', tokenUse: 'access'}));
+```
+
+- Pool lists map to `CognitoJwtVerifier.create([...])`; non-Cognito OIDC issuers map to `JwtVerifier.create({issuer, audience, jwksUri?})`.
+- 1.x options map onto verifier properties: `audience` → `clientId`, `validate` → `customJwtCheck`, `clockTolerance` → `graceSeconds`; `algorithms` policy and JWKS rotation handling are aws-jwt-verify internals now.
+- `throwOnError` remains, but throws aws-jwt-verify error classes (`aws-jwt-verify/error`) instead of `CognitoAuthError`.
+- The `utils/` token helpers are unchanged since the 2.x factories: module-level `setCredentials()` / `authorize()` / `getToken()` of 1.x became `createLazyAccessToken` / `createRenewableAccessToken` instances.
+- Version 2.0.0 was a zero-dependency rewrite of the verifier that was never published — AWS's [aws-jwt-verify] covers that ground, which is exactly why v3 delegates to it.
 
 ## Release notes
 
-- **2.0.0** _Zero-dependency, ESM-only rewrite. Verification on Node built-ins (`crypto` + `fetch`); configurable algorithm policy (default RS256, asymmetric-only); `audience` / `tokenUse` / `validate` claim checks; `throwOnError` with typed `CognitoAuthError`; per-issuer JWKS with automatic rotation refresh + `prime()`; non-Cognito OIDC support; token utilities are now per-instance factories._
+- **3.0.0** _Breaking reshape: verification delegated to AWS's [aws-jwt-verify] (new single runtime dependency); `makeGetUser` now wraps a verifier instance. The Koa & Express middlewares (formerly `koa-cognito-middleware` / `cognito-express-middleware`) are absorbed as `cognito-toolkit/koa` and `cognito-toolkit/express` — per-instance `makeAuth` bundles replace module-level statics; auth-cookie domain defaults to the hostname (Express 5 fix). Token utilities unchanged._
+- **2.0.0** _Zero-dependency, ESM-only rewrite of the 1.x verifier — never published; superseded by the 3.0.0 delegation to aws-jwt-verify._
 - 1.0.6 _Updated dependencies._
 - 1.0.5 _Updated dependencies._
 - 1.0.4 _Updated dependencies._

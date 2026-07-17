@@ -1,13 +1,15 @@
 {
   "name": "cognito-toolkit",
-  "version": "2.0.0",
-  "description": "Zero-dependency toolkit to validate AWS Cognito JWTs (id / access tokens) for authentication & authorization in web apps.",
+  "version": "3.0.0",
+  "description": "AWS Cognito auth for web apps: Koa & Express middleware (guards, auth cookie) built on the official aws-jwt-verify, plus client-credentials token utilities.",
   "type": "module",
   "main": "./src/index.js",
   "module": "./src/index.js",
   "types": "./src/index.d.ts",
   "exports": {
     ".": "./src/index.js",
+    "./koa": "./src/koa.js",
+    "./express": "./src/express.js",
     "./utils/lazy-access-token": "./src/utils/lazy-access-token.js",
     "./utils/renewable-access-token": "./src/utils/renewable-access-token.js",
     "./*": "./src/*"
@@ -41,11 +43,13 @@
     "authentication",
     "authorization",
     "jwt",
-    "jwks",
+    "middleware",
+    "koa",
+    "express",
+    "aws-jwt-verify",
     "oauth2",
     "user-pool",
-    "esm",
-    "zero-dependencies"
+    "esm"
   ],
   "author": "Eugene Lazutkin <eugene.lazutkin@gmail.com> (http://lazutkin.com)",
   "license": "BSD-3-Clause",
@@ -59,11 +63,18 @@
   "engines": {
     "node": ">=20"
   },
+  "dependencies": {
+    "aws-jwt-verify": "^5.2.1"
+  },
   "devDependencies": {
-    "@types/node": "^26.0.1",
-    "prettier": "^3.9.1",
-    "tape-six": "^1.11.0",
-    "typescript": "^6.0.3"
+    "@types/express": "^5.0.6",
+    "@types/koa": "^3.0.3",
+    "@types/node": "^26.1.1",
+    "express": "^5.2.1",
+    "koa": "^3.2.1",
+    "prettier": "^3.9.5",
+    "tape-six": "^1.15.0",
+    "typescript": "^7.0.2"
   },
   "files": [
     "src",

@@ -1,10 +1,22 @@
 import test from 'tape-six';
 
-import makeGetUser, {makeGetUser as named} from 'cognito-toolkit';
+import makeGetUser, {makeGetUser as named, CognitoJwtVerifier, JwtVerifier} from 'cognito-toolkit';
 
 test('smoke: default and named exports are the same function', t => {
   t.equal(typeof makeGetUser, 'function', 'default export');
   t.equal(makeGetUser, named, 'named mirror matches default');
+  t.equal(typeof CognitoJwtVerifier, 'function', 'CognitoJwtVerifier re-export');
+  t.equal(typeof JwtVerifier, 'function', 'JwtVerifier re-export');
+});
+
+test('smoke: middleware sub-exports resolve', async t => {
+  const koa = await import('cognito-toolkit/koa');
+  t.equal(typeof koa.makeAuth, 'function', 'koa named');
+  t.equal(koa.default, koa.makeAuth, 'koa default matches named');
+
+  const express = await import('cognito-toolkit/express');
+  t.equal(typeof express.makeAuth, 'function', 'express named');
+  t.equal(express.default, express.makeAuth, 'express default matches named');
 });
 
 test('smoke: util sub-exports resolve', async t => {
@@ -17,11 +29,11 @@ test('smoke: util sub-exports resolve', async t => {
   t.equal(typeof renew.createRenewableAccessToken, 'function', 'renewable named');
 });
 
-test('smoke: makeGetUser validates required options', t => {
-  t.throws(() => makeGetUser(), /Pool options should be specified/, 'no options');
-  t.throws(() => makeGetUser({}), /Region should be specified/, 'missing region');
-  t.throws(() => makeGetUser({region: 'us-east-1'}), /User pool ID should be specified/, 'missing pool id');
+test('smoke: makeGetUser validates the verifier', t => {
+  t.throws(() => makeGetUser(), /verifier/, 'no verifier');
+  t.throws(() => makeGetUser({}), /verifier/, 'not a verifier');
 
-  const getUser = makeGetUser({region: 'us-east-1', userPoolId: 'us-east-1_X'});
+  const getUser = makeGetUser({verify: async () => ({})});
   t.equal(typeof getUser, 'function', 'returns a validator');
+  t.equal(typeof getUser.prime, 'function', 'carries prime()');
 });

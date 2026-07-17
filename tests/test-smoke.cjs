@@ -3,18 +3,23 @@
 // through the named export, never `.default`.
 
 const {test} = require('tape-six');
-const {makeGetUser} = require('cognito-toolkit');
+const {makeGetUser, CognitoJwtVerifier} = require('cognito-toolkit');
+const {makeAuth: makeKoaAuth} = require('cognito-toolkit/koa');
+const {makeAuth: makeExpressAuth} = require('cognito-toolkit/express');
 const {createLazyAccessToken} = require('cognito-toolkit/utils/lazy-access-token');
 const {createRenewableAccessToken} = require('cognito-toolkit/utils/renewable-access-token');
 
 test('cjs: named exports resolve via require()', t => {
   t.equal(typeof makeGetUser, 'function', 'makeGetUser');
+  t.equal(typeof CognitoJwtVerifier, 'function', 'CognitoJwtVerifier');
+  t.equal(typeof makeKoaAuth, 'function', 'koa makeAuth');
+  t.equal(typeof makeExpressAuth, 'function', 'express makeAuth');
   t.equal(typeof createLazyAccessToken, 'function', 'createLazyAccessToken');
   t.equal(typeof createRenewableAccessToken, 'function', 'createRenewableAccessToken');
 });
 
 test('cjs: makeGetUser builds a validator', t => {
-  const getUser = makeGetUser({region: 'us-east-1', userPoolId: 'us-east-1_X'});
+  const getUser = makeGetUser({verify: async () => ({})});
   t.equal(typeof getUser, 'function', 'returns a validator');
-  t.throws(() => makeGetUser({}), 'still validates options');
+  t.throws(() => makeGetUser({}), 'still validates the verifier');
 });
