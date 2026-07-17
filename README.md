@@ -16,7 +16,12 @@ The port family mirrors [dynamodb-toolkit](https://github.com/uhop/dynamodb-tool
 npm install cognito-toolkit
 ```
 
-Requires Node 20+ (also runs on the latest Bun and Deno). ESM-only; CommonJS consumers load it via `require(esm)` and the named exports.
+Requires Node 20+ (also runs on the latest Bun and Deno). ESM-only; CommonJS consumers load it via `require(esm)` (Node 20.19+ / 22.12+) and the named exports:
+
+```js
+const {makeGetUser, CognitoJwtVerifier} = require('cognito-toolkit');
+const {makeAuth} = require('cognito-toolkit/koa'); // or /express, /fetch, /lambda
+```
 
 ## Usage
 
@@ -211,6 +216,10 @@ auth.cancelRenewal(true);
 - `getToken()` — returns the current token (or `null`). The renewal swaps it out over time, so always read it fresh.
 
 Each holder keeps its own state — create one per credential set.
+
+## TypeScript
+
+The package ships hand-written `.d.ts` sidecars — no build step, no separate `@types` package. The middleware typings use real framework types (`@types/koa`, `@types/express`, `@types/aws-lambda`), which TypeScript consumers of those ports typically already have; the Fetch port needs only the standard `Request` / `Response` globals. The payload type flows from the verifier: `makeGetUser` and `makeAuth` are generic over it (defaulting to aws-jwt-verify's `JwtPayload`), and anything satisfying `TokenVerifier<P>` — an object with an async, throwing `verify(jwt)` — types through, including hand-rolled test stand-ins.
 
 ## Security
 
