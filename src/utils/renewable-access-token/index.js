@@ -7,7 +7,8 @@ const GAP = 5 * 60 * 1000;
 export const createRenewableAccessToken = options => {
   const {url, clientId, secret, fetch, retryInterval = 60 * 1000, onError} = options || {};
   let token = null,
-    timeoutId = null;
+    timeoutId = null,
+    epoch = 0;
 
   const getToken = () => token;
 
@@ -19,9 +20,11 @@ export const createRenewableAccessToken = options => {
   };
 
   const renew = async () => {
+    const started = epoch;
     try {
       await retrieveToken();
     } catch (error) {
+      if (started !== epoch) return; // cancelled while in flight — stay cancelled
       debug('token renewal failed: %s', error && error.message);
       // Reschedule before the user callback: a throwing onError must not kill the cycle.
       schedule(renew, retryInterval);
@@ -30,13 +33,17 @@ export const createRenewableAccessToken = options => {
   };
 
   const retrieveToken = async () => {
-    token = await fetchToken({url, clientId, secret, fetch});
-    const expires = token.expires_in * 1000;
+    const started = epoch;
+    const fresh = await fetchToken({url, clientId, secret, fetch});
+    if (started !== epoch) return fresh; // cancelled while in flight — don't store or resurrect
+    token = fresh;
+    const expires = fresh.expires_in * 1000;
     schedule(renew, expires > GAP ? expires - GAP : expires / 2);
-    return token;
+    return fresh;
   };
 
   const cancelRenewal = clearToken => {
+    ++epoch;
     if (timeoutId) {
       clearTimeout(timeoutId);
       timeoutId = null;

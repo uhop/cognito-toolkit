@@ -26,7 +26,7 @@ CommonJS consumers use named exports via `require(esm)`: `const {makeAuth} = req
 
 ## Sub-exports
 
-- `cognito-toolkit` — `makeGetUser` (default + named) + re-exported `CognitoJwtVerifier` / `JwtVerifier` from aws-jwt-verify.
+- `cognito-toolkit` — `makeGetUser` (default + named) + re-exported `CognitoJwtVerifier` / `JwtVerifier` / `AlbJwtVerifier` from aws-jwt-verify.
 - `cognito-toolkit/koa` — `makeAuth` (default + named): Koa middleware bundle.
 - `cognito-toolkit/express` — `makeAuth` (default + named): Express middleware bundle.
 - `cognito-toolkit/fetch` — `makeAuth` (default + named): Fetch handler-wrapper bundle (Bun.serve, Deno.serve, Cloudflare Workers, Hono, …).

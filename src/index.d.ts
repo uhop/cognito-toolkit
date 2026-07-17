@@ -1,6 +1,6 @@
 import type {JwtPayload} from 'aws-jwt-verify/jwt-model';
 
-export {CognitoJwtVerifier, JwtVerifier} from 'aws-jwt-verify';
+export {AlbJwtVerifier, CognitoJwtVerifier, JwtVerifier} from 'aws-jwt-verify';
 
 /**
  * Anything with an aws-jwt-verify-shaped async `verify()` — a

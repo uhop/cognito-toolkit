@@ -128,7 +128,7 @@ const getUser = makeGetUser(verifier);
 const user = await getUser(tokenFromAnywhere); // decoded payload or null — never throws on a bad token
 ```
 
-A rule of thumb for custom validators: an [isAllowed](#the-middleware-bundle) rule covers per-route logic; anything about the _token itself_ (audience, token use, extra claim checks) belongs on the verifier — see the [aws-jwt-verify] documentation for `customJwtCheck`, multi-pool setups, and the generic `JwtVerifier` for non-Cognito OIDC issuers. Both verifier classes are re-exported here for convenience.
+A rule of thumb for custom validators: an [isAllowed](#the-middleware-bundle) rule covers per-route logic; anything about the _token itself_ (audience, token use, extra claim checks) belongs on the verifier — see the [aws-jwt-verify] documentation for `customJwtCheck`, multi-pool setups, the generic `JwtVerifier` for non-Cognito OIDC issuers, and `AlbJwtVerifier` for ALB-forwarded tokens. All three verifier classes are re-exported here for convenience.
 
 Enable debug logging with the `NODE_DEBUG=cognito-toolkit` environment variable.
 

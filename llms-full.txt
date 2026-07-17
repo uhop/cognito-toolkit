@@ -24,7 +24,7 @@ What web apps then need — and what this package provides — is the layer abov
 4. **Persisting** the token into a cookie ("login once via header, ride the cookie afterwards").
 5. Obtaining **outbound** machine-to-machine tokens via `client_credentials` (unrelated to verification, but the same Cognito ecosystem).
 
-Multiple pools: `CognitoJwtVerifier.create([{...}, {...}])`. Non-Cognito OIDC issuers: `JwtVerifier.create({issuer, audience, jwksUri?})` (also re-exported). Custom claim checks: the verifier's `customJwtCheck`.
+Multiple pools: `CognitoJwtVerifier.create([{...}, {...}])`. Non-Cognito OIDC issuers: `JwtVerifier.create({issuer, audience, jwksUri?})`. ALB-forwarded tokens (`x-amzn-oidc-data`): `AlbJwtVerifier`. All three are re-exported from the root. Custom claim checks: the verifier's `customJwtCheck`.
 
 ## Install
 

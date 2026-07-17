@@ -33,7 +33,11 @@ export interface RenewableAccessToken {
    * refresh timer is `unref`ed, so it never keeps the process alive on its own.
    */
   retrieveToken(): Promise<AccessToken>;
-  /** Cancels the scheduled refresh (or pending retry); pass `true` to also drop the cached token. */
+  /**
+   * Cancels the scheduled refresh (or pending retry); pass `true` to also drop
+   * the cached token. Final even mid-flight: a renewal already awaiting the
+   * token endpoint neither stores its late result nor reschedules.
+   */
   cancelRenewal(clearToken?: boolean): void;
   /** Returns the current token without fetching (may be `null`). */
   getToken(): AccessToken | null;

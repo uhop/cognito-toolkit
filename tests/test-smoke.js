@@ -1,12 +1,13 @@
 import test from 'tape-six';
 
-import makeGetUser, {makeGetUser as named, CognitoJwtVerifier, JwtVerifier} from 'cognito-toolkit';
+import makeGetUser, {makeGetUser as named, AlbJwtVerifier, CognitoJwtVerifier, JwtVerifier} from 'cognito-toolkit';
 
 test('smoke: default and named exports are the same function', t => {
   t.equal(typeof makeGetUser, 'function', 'default export');
   t.equal(makeGetUser, named, 'named mirror matches default');
   t.equal(typeof CognitoJwtVerifier, 'function', 'CognitoJwtVerifier re-export');
   t.equal(typeof JwtVerifier, 'function', 'JwtVerifier re-export');
+  t.equal(typeof AlbJwtVerifier, 'function', 'AlbJwtVerifier re-export');
 });
 
 test('smoke: middleware sub-exports resolve', async t => {

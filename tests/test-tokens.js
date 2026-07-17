@@ -99,6 +99,30 @@ test('renewable: a failed scheduled renewal retries instead of stopping the cycl
   holder.cancelRenewal(true);
 });
 
+test('renewable: cancelRenewal during an in-flight renewal does not resurrect the cycle', async t => {
+  let calls = 0;
+  let release;
+  const gate = new Promise(resolve => (release = resolve));
+  const fetch = async () => {
+    if (++calls === 1) return {ok: true, status: 200, json: async () => ({access_token: 'A', token_type: 'Bearer', expires_in: 0.02})};
+    await gate; // hold the scheduled renewal in flight
+    return {ok: true, status: 200, json: async () => ({access_token: 'B', token_type: 'Bearer', expires_in: 3600})};
+  };
+  const holder = createRenewableAccessToken({url: 'https://example/oauth2/token', clientId: 'id', secret: 's', fetch, retryInterval: 5});
+
+  await holder.retrieveToken();
+  const deadline = Date.now() + 2000;
+  while (calls < 2 && Date.now() < deadline) await sleep(5); // the renewal is now in flight
+
+  holder.cancelRenewal(true);
+  release(); // the in-flight fetch completes after the cancel
+  await sleep(30);
+  t.equal(holder.getToken(), null, 'the late result does not overwrite the cancelled state');
+  const after = calls;
+  await sleep(40);
+  t.equal(calls, after, 'the cycle stays cancelled');
+});
+
 test('renewable: cancelRenewal stops a pending retry', async t => {
   let calls = 0;
   const fetch = async () =>
