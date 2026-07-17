@@ -71,9 +71,9 @@ Framework-free core (default export of `cognito-toolkit`). Absent token or faile
 
 `authorize()` returns a cached unexpired token or fetches a fresh one; `getToken()` returns the current token without fetching. State is per-instance.
 
-### `createRenewableAccessToken({url, clientId, secret, fetch?}) -> {retrieveToken, cancelRenewal, getToken}`
+### `createRenewableAccessToken({url, clientId, secret, fetch?, retryInterval?, onError?}) -> {retrieveToken, cancelRenewal, getToken}`
 
-`retrieveToken()` fetches a token and schedules an automatic refresh shortly before expiry (the timer is `unref`ed). `cancelRenewal(clearToken?)` stops the refresh. Always read the live token via `getToken()`.
+`retrieveToken()` fetches a token and schedules an automatic refresh shortly before expiry (the timer is `unref`ed). A failed scheduled refresh keeps the previous token and retries every `retryInterval` ms (default 60000) until success or `cancelRenewal()`; failures go to `onError` (or the debug channel). `cancelRenewal(clearToken?)` stops the refresh/retry. Always read the live token via `getToken()`.
 
 ## Notes
 

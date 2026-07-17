@@ -212,8 +212,9 @@ auth.cancelRenewal(true);
 ```
 
 - `retrieveToken()` — fetches a token and schedules a refresh shortly before expiry. The refresh timer is `unref`ed, so it never keeps the process alive on its own.
-- `cancelRenewal(clearToken?)` — cancels the scheduled refresh; pass `true` to also drop the cached token.
+- `cancelRenewal(clearToken?)` — cancels the scheduled refresh (or a pending retry); pass `true` to also drop the cached token.
 - `getToken()` — returns the current token (or `null`). The renewal swaps it out over time, so always read it fresh.
+- A **failed scheduled refresh** keeps the previous token and retries every `retryInterval` ms (default: one minute) until it succeeds or is cancelled; pass `onError` to observe the failures (direct `retrieveToken()` calls throw instead).
 
 Each holder keeps its own state — create one per credential set.
 

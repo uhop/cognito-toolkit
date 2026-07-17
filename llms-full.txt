@@ -179,10 +179,11 @@ Unrelated to verification: obtain **outbound** OAuth2 `client_credentials` acces
 - `authorize()` — returns the cached token while it is fresh (refreshes 5 minutes before expiry), otherwise fetches a new one.
 - `getToken()` — current token or `null`, never fetches.
 
-### `createRenewableAccessToken({url, clientId, secret, fetch?})`
+### `createRenewableAccessToken({url, clientId, secret, fetch?, retryInterval?, onError?})`
 
 - `retrieveToken()` — fetches and schedules automatic renewal shortly before expiry; the timer is `unref`ed so it never keeps the process alive.
-- `cancelRenewal(clearToken?)` — stops renewal; `true` also drops the cached token.
+- A failed **scheduled** renewal keeps the previous token and retries every `retryInterval` ms (default `60000`) until a fetch succeeds or renewal is cancelled; each failure is passed to `onError` (without one it is only visible on `NODE_DEBUG=cognito-toolkit`). Direct `retrieveToken()` calls throw instead.
+- `cancelRenewal(clearToken?)` — stops renewal including a pending retry; `true` also drops the cached token.
 - `getToken()` — always read the live token through this (renewal replaces it over time).
 
 Both throw on a non-2xx token response and on a malformed 2xx body (a broken auth server is an error, not a "no token" state).

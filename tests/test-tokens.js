@@ -66,3 +66,53 @@ test('renewable: a bad status code rejects', async t => {
   await t.rejects(holder.retrieveToken(), /Bad status code: 401/, 'propagates the HTTP error');
   holder.cancelRenewal();
 });
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+test('renewable: a failed scheduled renewal retries instead of stopping the cycle', async t => {
+  let calls = 0;
+  const errors = [];
+  const responses = [
+    {ok: true, status: 200, json: async () => ({access_token: 'A', token_type: 'Bearer', expires_in: 0.02})},
+    {ok: false, status: 500},
+    {ok: true, status: 200, json: async () => ({access_token: 'B', token_type: 'Bearer', expires_in: 3600})}
+  ];
+  const fetch = async () => responses[Math.min(calls++, responses.length - 1)];
+  const holder = createRenewableAccessToken({
+    url: 'https://example/oauth2/token',
+    clientId: 'id',
+    secret: 's',
+    fetch,
+    retryInterval: 10,
+    onError: error => errors.push(error)
+  });
+
+  const first = await holder.retrieveToken();
+  t.equal(first.access_token, 'A', 'initial token fetched');
+
+  const deadline = Date.now() + 2000;
+  while (holder.getToken()?.access_token !== 'B' && Date.now() < deadline) await sleep(5);
+
+  t.equal(holder.getToken()?.access_token, 'B', 'renewal recovered after a failure');
+  t.equal(errors.length, 1, 'onError saw the failure');
+  t.matchString(errors[0]?.message, /Bad status code: 500/, 'onError got the fetch error');
+  holder.cancelRenewal(true);
+});
+
+test('renewable: cancelRenewal stops a pending retry', async t => {
+  let calls = 0;
+  const fetch = async () =>
+    ++calls === 1 ? {ok: true, status: 200, json: async () => ({access_token: 'A', token_type: 'Bearer', expires_in: 0.02})} : {ok: false, status: 500};
+  const holder = createRenewableAccessToken({url: 'https://example/oauth2/token', clientId: 'id', secret: 's', fetch, retryInterval: 10, onError: () => {}});
+
+  await holder.retrieveToken();
+  const deadline = Date.now() + 2000;
+  while (calls < 2 && Date.now() < deadline) await sleep(5); // let the failing renewal engage
+
+  holder.cancelRenewal(true);
+  await sleep(40);
+  const after = calls;
+  await sleep(40);
+  t.equal(calls, after, 'no further fetches once cancelled');
+  t.equal(holder.getToken(), null, 'token cleared');
+});
