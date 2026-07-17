@@ -1,3 +1,4 @@
+// @ts-self-types="./index.d.ts"
 import {debug} from './debug.js';
 
 export {CognitoJwtVerifier, JwtVerifier} from 'aws-jwt-verify';

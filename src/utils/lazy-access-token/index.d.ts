@@ -1,4 +1,4 @@
-import type {AccessToken} from './fetch-token.js';
+import type {AccessToken} from '../fetch-token.js';
 
 export interface AccessTokenOptions {
   /** The Cognito domain token endpoint, e.g. `https://<domain>/oauth2/token`. */

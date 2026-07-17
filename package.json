@@ -8,10 +8,10 @@
   "types": "./src/index.d.ts",
   "exports": {
     ".": "./src/index.js",
-    "./koa": "./src/koa.js",
-    "./express": "./src/express.js",
-    "./utils/lazy-access-token": "./src/utils/lazy-access-token.js",
-    "./utils/renewable-access-token": "./src/utils/renewable-access-token.js",
+    "./koa": "./src/koa/index.js",
+    "./express": "./src/express/index.js",
+    "./utils/lazy-access-token": "./src/utils/lazy-access-token/index.js",
+    "./utils/renewable-access-token": "./src/utils/renewable-access-token/index.js",
     "./*": "./src/*"
   },
   "scripts": {
@@ -58,11 +58,6 @@
   },
   "homepage": "https://github.com/uhop/cognito-toolkit#readme",
   "funding": "https://github.com/sponsors/uhop",
-  "llms": "https://raw.githubusercontent.com/uhop/cognito-toolkit/master/llms.txt",
-  "llmsFull": "https://raw.githubusercontent.com/uhop/cognito-toolkit/master/llms-full.txt",
-  "engines": {
-    "node": ">=20"
-  },
   "dependencies": {
     "aws-jwt-verify": "^5.2.1"
   },

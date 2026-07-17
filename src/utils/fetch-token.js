@@ -1,3 +1,4 @@
+// @ts-self-types="./fetch-token.d.ts"
 const BODY = 'grant_type=client_credentials';
 
 export const fetchToken = async ({url, clientId, secret, fetch: fetchImpl = fetch}) => {

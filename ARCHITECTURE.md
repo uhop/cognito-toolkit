@@ -17,13 +17,13 @@ index.js ──▶ aws-jwt-verify (CognitoJwtVerifier / JwtVerifier re-exports)
    │              (makeGetUser: verifier -> token => payload | null; prime() -> hydrate())
    └──▶ debug.js
 
-koa.js ─────▶ index.js (makeGetUser)
-   └────────▶ claims.js (getGroups / getScopes)
-express.js ─▶ index.js (makeGetUser)
-   └────────▶ claims.js
+koa/index.js ─────▶ index.js (makeGetUser)
+   └──────────────▶ claims.js (getGroups / getScopes)
+express/index.js ─▶ index.js (makeGetUser)
+   └──────────────▶ claims.js
 
-utils/lazy-access-token.js ──────▶ utils/fetch-token.js
-utils/renewable-access-token.js ─▶ utils/fetch-token.js
+utils/lazy-access-token/index.js ──────▶ utils/fetch-token.js
+utils/renewable-access-token/index.js ─▶ utils/fetch-token.js
 ```
 
 ## The adapter (`index.js`)
@@ -37,7 +37,7 @@ utils/renewable-access-token.js ─▶ utils/fetch-token.js
 
 The payload type is generic and flows from the verifier in the `.d.ts` layer; any object with an async throwing `verify()` works (`TokenVerifier<P>`), which is also how the tests type structural stand-ins.
 
-## The middleware bundles (`koa.js` / `express.js`)
+## The middleware bundles (`koa/` / `express/`)
 
 `makeAuth(options)` returns a per-instance bundle — `{getUser, isAuthenticated, hasGroup, hasScope, isAllowed, setAuthCookie, stateUserProperty}`. The v1 middlewares hung the guards and the `stateUserProperty` knob on the module as mutable statics, coupling every consumer in the process; the factory closes over one options set instead (the same fix the 2.x utils made for the v1 token singletons).
 

@@ -87,6 +87,8 @@ A rule of thumb for custom validators: an [isAllowed](#the-middleware-bundle) ru
 
 Enable debug logging with the `NODE_DEBUG=cognito-toolkit` environment variable.
 
+Full docs: this README plus the [wiki](https://github.com/uhop/cognito-toolkit/wiki) — [browse](https://github.com/uhop/cognito-toolkit/wiki/Home) or [search it](https://uhop.github.io/wiki-search/app/?wiki=uhop/cognito-toolkit).
+
 ## API
 
 ### `makeAuth(options)` — `cognito-toolkit/koa` and `cognito-toolkit/express`
@@ -205,8 +207,10 @@ const getUser = makeGetUser(CognitoJwtVerifier.create({userPoolId: 'us-east-1_X'
 
 ## Release notes
 
-- **3.0.0** _Breaking reshape: verification delegated to AWS's [aws-jwt-verify] (new single runtime dependency); `makeGetUser` now wraps a verifier instance. The Koa & Express middlewares (formerly `koa-cognito-middleware` / `cognito-express-middleware`) are absorbed as `cognito-toolkit/koa` and `cognito-toolkit/express` — per-instance `makeAuth` bundles replace module-level statics; auth-cookie domain defaults to the hostname (Express 5 fix). Token utilities unchanged._
-- **2.0.0** _Zero-dependency, ESM-only rewrite of the 1.x verifier — never published; superseded by the 3.0.0 delegation to aws-jwt-verify._
+Details per release live in the wiki's [Release notes](https://github.com/uhop/cognito-toolkit/wiki/Release-notes).
+
+- **3.0.0** _Breaking reshape: verification delegated to AWS's [aws-jwt-verify]; the Koa & Express middlewares absorbed as `cognito-toolkit/koa` / `cognito-toolkit/express` with per-instance `makeAuth` bundles._
+- **2.0.0** _Zero-dependency rewrite of the 1.x verifier — never published; superseded by 3.0.0._
 - 1.0.6 _Updated dependencies._
 - 1.0.5 _Updated dependencies._
 - 1.0.4 _Updated dependencies._

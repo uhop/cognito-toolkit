@@ -1,4 +1,5 @@
-import {fetchToken} from './fetch-token.js';
+// @ts-self-types="./index.d.ts"
+import {fetchToken} from '../fetch-token.js';
 
 const GAP = 5 * 60 * 1000;
 

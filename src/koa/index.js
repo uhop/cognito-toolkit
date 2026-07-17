@@ -1,5 +1,6 @@
-import {makeGetUser} from './index.js';
-import {getGroups, getScopes} from './claims.js';
+// @ts-self-types="./index.d.ts"
+import {makeGetUser} from '../index.js';
+import {getGroups, getScopes} from '../claims.js';
 
 const makeTokenSource = (header, cookie) => {
   if (!header) return ctx => ctx.cookies.get(cookie) || null;
