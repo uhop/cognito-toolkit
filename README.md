@@ -132,7 +132,7 @@ A rule of thumb for custom validators: an [isAllowed](#the-middleware-bundle) ru
 
 Enable debug logging with the `NODE_DEBUG=cognito-toolkit` environment variable.
 
-Full docs: this README plus the [wiki](https://github.com/uhop/cognito-toolkit/wiki) — [browse](https://github.com/uhop/cognito-toolkit/wiki/Home) or [search it](https://uhop.github.io/wiki-search/app/?wiki=uhop/cognito-toolkit).
+Full docs: this README plus the [wiki](https://github.com/uhop/cognito-toolkit/wiki) — [browse](https://github.com/uhop/cognito-toolkit/wiki/Home) or [search it](https://uhop.github.io/wiki-search/app/?wiki=uhop/cognito-toolkit). Building a web app? [Browser usage](https://github.com/uhop/cognito-toolkit/wiki/Browser-usage) covers the client side: 401-driven login redirects, return URLs, and renewal timers.
 
 ## API
 
