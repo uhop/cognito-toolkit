@@ -1,6 +1,6 @@
 # cognito-toolkit (v3)
 
-> ESM-only middleware family for AWS Cognito authentication & authorization in web apps. Verification is delegated to AWS's official `aws-jwt-verify` (the single runtime dependency, itself dependency-free); this package supplies the glue: Koa and Express middleware with route guards (`isAuthenticated` / `hasGroup` / `hasScope` / `isAllowed`) and an auth-cookie convenience, a framework-free `makeGetUser` adapter (`token => payload | null`), and two `utils/` helpers that fetch and cache OAuth2 `client_credentials` access tokens. Runtime targets Node 20+, latest Bun, latest Deno.
+> ESM-only middleware family for AWS Cognito authentication & authorization in web apps. Verification is delegated to AWS's official `aws-jwt-verify` (the single runtime dependency, itself dependency-free); this package supplies the glue: Koa, Express, Fetch-style (Bun/Deno/Cloudflare Workers), and AWS Lambda ports with route guards (`isAuthenticated` / `hasGroup` / `hasScope` / `isAllowed`) and an auth-cookie convenience, a framework-free `makeGetUser` adapter (`token => payload | null`), and two `utils/` helpers that fetch and cache OAuth2 `client_credentials` access tokens. The port family mirrors dynamodb-toolkit's adapters, so the two compose without glue. Runtime targets Node 20+, latest Bun, latest Deno.
 
 ## Install
 
@@ -29,12 +29,14 @@ CommonJS consumers use named exports via `require(esm)`: `const {makeAuth} = req
 - `cognito-toolkit` — `makeGetUser` (default + named) + re-exported `CognitoJwtVerifier` / `JwtVerifier` from aws-jwt-verify.
 - `cognito-toolkit/koa` — `makeAuth` (default + named): Koa middleware bundle.
 - `cognito-toolkit/express` — `makeAuth` (default + named): Express middleware bundle.
+- `cognito-toolkit/fetch` — `makeAuth` (default + named): Fetch handler-wrapper bundle (Bun.serve, Deno.serve, Cloudflare Workers, Hono, …).
+- `cognito-toolkit/lambda` — `makeAuth` (default + named): AWS Lambda handler-wrapper bundle (API Gateway v1/v2, Function URL, ALB events auto-detected).
 - `cognito-toolkit/utils/lazy-access-token` — `createLazyAccessToken` (default + named). On-demand, cached `client_credentials` access-token holder.
 - `cognito-toolkit/utils/renewable-access-token` — `createRenewableAccessToken` (default + named). Timer-renewed `client_credentials` access-token holder.
 
 ## API
 
-### `makeAuth(options)` (koa / express) `-> {getUser, isAuthenticated, hasGroup, hasScope, isAllowed, setAuthCookie, stateUserProperty}`
+### `makeAuth(options)` (koa / express / fetch / lambda) `-> {getUser, isAuthenticated, hasGroup, hasScope, isAllowed, setAuthCookie, stateUserProperty?}`
 
 Options:
 
@@ -53,6 +55,13 @@ Bundle members:
 - `hasGroup(group)` / `hasScope(scope)` — guards: 401 without a user, 403 without the `cognito:groups` membership / `scope` claim entry.
 - `isAllowed(validator)` — guard with `(ctx|req, groups, scopes) => boolean | Promise<boolean>`; falsy → 401 (anonymous) / 403 (authenticated).
 - `setAuthCookie(ctx, opts?)` / `setAuthCookie(req, res, opts?)` — persist the current token into the auth cookie (skipped when already there). Expires with the token; domain defaults to the request hostname.
+
+Fetch / Lambda differences (immutable request / pristine event — no state property):
+
+- `getUser(request | event)` is a memoized async lookup (one verification per request; WeakMap-backed) instead of a middleware.
+- Guards wrap handlers — `auth.isAuthenticated(handler)`, `auth.hasGroup(g)(handler)` — passing extra args through (Bun `server`, Cloudflare `env`/`ctx`, Lambda `context`); denials are a `Response` (fetch) or `{statusCode: 401|403}` envelope (lambda, ALB multi-value mode mirrored).
+- `setAuthCookie(request, response, opts?)` / `setAuthCookie(event, result, opts?)` is async and returns the response/result to use; automatic refresh (via `setAuthCookieOptions`) applies on guarded responses. Cookies serialized in-house: `Path=/`, `HttpOnly` by default.
+- Lambda events: API Gateway v1/v2/Function URL/ALB auto-detected; headers read case-insensitively; v2 `cookies` array supported. Behind API Gateway proper prefer the built-in Cognito/JWT authorizer; this port's niche is Function URLs, ALB (`AlbJwtVerifier`), local bridges.
 
 ### `makeGetUser(verifier, options?) -> (token) => Promise<payload | null>`
 

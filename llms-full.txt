@@ -1,6 +1,6 @@
 # cognito-toolkit (v3) — full reference
 
-> ESM-only middleware family for AWS Cognito authentication & authorization in web apps. Token verification is delegated to AWS's official `aws-jwt-verify` (single runtime dependency, itself dependency-free); this package supplies the web-app glue: Koa and Express middleware bundles with route guards and an auth-cookie convenience, a framework-free `makeGetUser` adapter, and OAuth2 `client_credentials` token utilities. Node 20+, latest Bun, latest Deno.
+> ESM-only middleware family for AWS Cognito authentication & authorization in web apps. Token verification is delegated to AWS's official `aws-jwt-verify` (single runtime dependency, itself dependency-free); this package supplies the web-app glue: Koa, Express, Fetch-style (Bun/Deno/Cloudflare Workers), and AWS Lambda middleware bundles with route guards and an auth-cookie convenience, a framework-free `makeGetUser` adapter, and OAuth2 `client_credentials` token utilities. The port family mirrors dynamodb-toolkit's adapters (`./koa`, `./express`, `./fetch`, `./lambda`) so the two toolkits compose without glue. Node 20+, latest Bun, latest Deno.
 
 ## Concepts
 
@@ -46,9 +46,9 @@ const {makeAuth} = require('cognito-toolkit/koa');
 const {makeGetUser, CognitoJwtVerifier} = require('cognito-toolkit');
 ```
 
-## `makeAuth(options)` — `cognito-toolkit/koa` and `cognito-toolkit/express`
+## `makeAuth(options)` — `cognito-toolkit/{koa,express,fetch,lambda}`
 
-Builds a middleware bundle bound to one verifier and one options set. No module-level state — create as many bundles as needed (e.g. one per pool or per token type).
+Builds a middleware bundle bound to one verifier and one options set. No module-level state — create as many bundles as needed (e.g. one per pool or per token type). Koa/Express are chain-middleware ports; Fetch/Lambda are handler-wrapper ports (see their sections below).
 
 Options:
 
@@ -120,6 +120,40 @@ app.post('/write', auth.hasScope('write'), (req, res) => res.send('scoped'));
 app.post('/admin', auth.hasGroup('admins'), (req, res) => res.send('grouped'));
 ```
 
+### Fetch port — `cognito-toolkit/fetch`
+
+For `(request: Request) => Promise<Response>` servers: Bun.serve, Deno.serve / Deploy, Cloudflare Workers, Hono, itty-router, Node's fetch-style frameworks — and dynamodb-toolkit's `createFetchAdapter` handlers. Requests are immutable, so the bundle has no `stateUserProperty`:
+
+- `getUser(request)` — memoized async lookup (`WeakMap` of pending verifications): guards and handlers share one verification per request; extra calls are free. The resolved user carries `_token`.
+- Guards wrap handlers and preserve extra server args: `auth.isAuthenticated(handler)`, `auth.hasGroup(g)(handler)`, `auth.hasScope(s)(handler)`, `auth.isAllowed(validator)(handler)` with `validator(request, groups, scopes)`. Denials: `new Response(null, {status: 401 | 403})`.
+- `setAuthCookie(request, response, opts?)` — async, **returns** the response to use (clones when the original's headers are immutable). Automatic refresh via `setAuthCookieOptions` applies to responses passing through guards. Cookies serialized in-house: `Path=/` and `HttpOnly` by default, `Domain` defaults to the request hostname.
+
+```js
+import {makeAuth} from 'cognito-toolkit/fetch';
+
+const auth = makeAuth({verifier});
+export default {
+  fetch: auth.isAuthenticated(async request => Response.json(await auth.getUser(request)))
+};
+```
+
+### Lambda port — `cognito-toolkit/lambda`
+
+Same wrapper model over AWS Lambda events — API Gateway v1, v2 / Function URL, and ALB shapes are auto-detected (dynamodb-toolkit's detection rules): headers are read case-insensitively (v2 lowercases, v1/ALB preserve casing, ALB multi-value mode null-stamps `headers`), v2 cookies come from `event.cookies`, and denials mirror the trigger's header mode (`{statusCode, body: '', multiValueHeaders?}`).
+
+- `getUser(event)` — memoized per event object; `_token` attached.
+- Guards wrap `(event, context) => result` handlers, `context` flows through.
+- `setAuthCookie(event, result, opts?)` — async; shape-aware Set-Cookie (v2 `cookies` array; v1/ALB headers, lifted to `multiValueHeaders` when required); mutates and returns the result. Automatic refresh via `setAuthCookieOptions`.
+
+```js
+import {makeAuth} from 'cognito-toolkit/lambda';
+
+const auth = makeAuth({verifier});
+export const handler = auth.hasGroup('admins')(async (event, context) => ({statusCode: 200, body: 'ok'}));
+```
+
+Behind API Gateway proper, prefer the built-in Cognito / JWT authorizer (rejects bad tokens without invoking the function). This port's niche: **Function URLs** (auth options are IAM or none), **ALB** targets (pair with aws-jwt-verify's `AlbJwtVerifier` when the ALB's `authenticate-cognito` action forwards `x-amzn-oidc-data`), and local-debug bridges (e.g. dynamodb-toolkit's `lambda/local.js` driving the composed handler).
+
 ## `makeGetUser(verifier, options?)` — `cognito-toolkit`
 
 The framework-free core (default + named export). Wraps a verifier into the token-to-user-or-`null` shape:
@@ -155,7 +189,7 @@ Both throw on a non-2xx token response and on a malformed 2xx body (a broken aut
 
 ## Typings
 
-Hand-written `.d.ts` sidecars; no build step. The middleware `.d.ts` use real framework types (`koa` / `express` — dev-time only; the runtime duck-types both frameworks). Payload typing flows from the verifier: `makeGetUser`/`makeAuth` are generic over the payload type, defaulting to aws-jwt-verify's `JwtPayload`; structural stand-in verifiers (`TokenVerifier<P>`) type through.
+Hand-written `.d.ts` sidecars; no build step. The middleware `.d.ts` use real framework types (`koa` / `express` / `aws-lambda` — dev-time only; the runtime duck-types everything). Payload typing flows from the verifier: `makeGetUser`/`makeAuth` are generic over the payload type, defaulting to aws-jwt-verify's `JwtPayload`; structural stand-in verifiers (`TokenVerifier<P>`) type through. The lambda port types events as `APIGatewayProxyEvent | APIGatewayProxyEventV2 | ALBEvent`.
 
 ## Migration
 

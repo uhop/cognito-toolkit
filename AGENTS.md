@@ -37,9 +37,13 @@ There is no build step. The published tarball ships `src/` (the `.js` + `.d.ts` 
 cognito-toolkit/
 ├── src/                              # Published code (ESM .js + .d.ts sidecars)
 │   ├── index.js / index.d.ts         # makeGetUser adapter + aws-jwt-verify re-exports
-│   ├── koa/index.js / index.d.ts     # makeAuth — Koa middleware bundle (folder barrel)
-│   ├── express/index.js / index.d.ts # makeAuth — Express middleware bundle (folder barrel)
-│   ├── claims.js / claims.d.ts       # getGroups / getScopes claim readers (shared by both bundles)
+│   ├── http/                         # middleware ports (mirrors dynamodb-toolkit's src/http/)
+│   │   ├── koa/index.js + index.d.ts     # makeAuth — Koa middleware bundle
+│   │   ├── express/index.js + index.d.ts # makeAuth — Express middleware bundle
+│   │   ├── fetch/index.js + index.d.ts   # makeAuth — Fetch handler-wrapper bundle (Bun/Deno/Workers)
+│   │   ├── lambda/index.js + index.d.ts  # makeAuth — Lambda handler-wrapper bundle (v1/v2/Function URL/ALB)
+│   │   ├── claims.js / claims.d.ts       # getGroups / getScopes claim readers (shared by all ports)
+│   │   └── cookies.js / cookies.d.ts     # cookie parse/serialize (shared by fetch + lambda)
 │   ├── debug.js / debug.d.ts         # util.debuglog('cognito-toolkit') channel
 │   └── utils/
 │       ├── fetch-token.js / .d.ts            # internal client_credentials POST helper
@@ -50,6 +54,8 @@ cognito-toolkit/
 │   │                                 #   throwOnError / stand-in verifier / prime()
 │   ├── test-koa.js                   # Koa e2e over loopback http: sources, guards, auth cookie
 │   ├── test-express.js               # Express e2e over loopback http: same coverage
+│   ├── test-fetch.js                 # Fetch port: constructed Requests, wrappers, memoization, cookies
+│   ├── test-lambda.js                # Lambda port: v1/v2/Function URL/ALB events, envelopes, cookies
 │   ├── test-tokens.js                # lazy + renewable access-token holders
 │   ├── test-smoke.js                 # ESM export surface (incl. subpaths)
 │   ├── test-smoke.cjs                # require(esm) smoke (Node-only)
@@ -66,7 +72,7 @@ The published tarball ships **`src/`, `README.md`, `LICENSE`, `llms.txt`, `llms-
 - **ESM only** — `import` / `export`, `"type": "module"`. No CommonJS source, no transpiler. CJS consumers reach the package via `require(esm)` (Node 20.19+ / 22.12+) and the **named** exports: `const {makeAuth} = require('cognito-toolkit/koa')`.
 - **`.js` + hand-written `.d.ts` sidecars** — not true TypeScript. Both files live next to each other (`foo.js` ↔ `foo.d.ts`; subpath entry points are folder barrels: `koa/index.js` ↔ `koa/index.d.ts`). Every exported symbol carries JSDoc on the `.d.ts` side; `.js` files carry no JSDoc (the rare `/** @type */` cast for `js-check` is fine) and open with `// @ts-self-types="./<file>.d.ts"` so IDE hover defers to the sidecar.
 - **Default export with named mirror** — a module that has a `default` export also exports the same value by name (`export default makeAuth; export {makeAuth}`). ESM imports use the default or the name; CJS destructures the name.
-- **One runtime dependency: `aws-jwt-verify`. Keep it that way.** The verifier is deliberately adopted, not owned (see ARCHITECTURE.md § Why v3 delegates); everything else stays on Node built-ins. **Frameworks are duck-typed** — `koa` / `express` (+ `@types/*`) are devDependencies for tests and typings only; `src/` never imports them.
+- **One runtime dependency: `aws-jwt-verify`. Keep it that way.** The verifier is deliberately adopted, not owned (see ARCHITECTURE.md § Why v3 delegates); everything else stays on Node built-ins. **Frameworks are duck-typed** — `koa` / `express` / `@types/{koa,express,aws-lambda}` are devDependencies for tests and typings only; `src/` never imports them.
 - **Node 20+** target. Also runs on the latest Bun and Deno.
 - **No `any` in `.d.ts`.** Use proper shapes or `unknown`. (Generics flow the payload type from the verifier.)
 - **Arrow functions + FP style preferred.** No classes — factories returning per-instance closures. Never reintroduce module-level mutable singletons: the v1 middlewares' static `getUser.stateUserProperty` / shared guards were exactly that footgun, and `makeAuth`'s per-instance bundle is the fix. Don't add statics to it.
@@ -80,6 +86,6 @@ The published tarball ships **`src/`, `README.md`, `LICENSE`, `llms.txt`, `llms-
 
 `makeGetUser(verifier, options?)` (in `index.js`) is the seam between the commodity and the glue: it validates the verifier shape, short-circuits absent tokens to `null`, maps verification failures to `null` (debug-logged) or rethrows under `throwOnError`, and exposes `prime()` → `verifier.hydrate()`. Both middleware modules build on it.
 
-`koa/` / `express/` are deliberate near-twins (`makeAuth(options)`): resolve options, build a token source (header → cookie fallback, or a custom `source`), authenticate in `getUser`, attach `_token` + a bound `setAuthCookie` to the payload, and expose the guards. Framework quirks live where they belong: Koa refreshes the auth cookie after `await next()`, Express hooks `res.writeHead`; Koa reads cookies natively, Express expects `req.cookies` (cookie-parser). Shared claim readers (`cognito:groups`, `scope`) sit in `claims.js`.
+The four ports under `src/http/` share one `makeAuth(options)` surface and mirror dynamodb-toolkit's adapter family (`./koa`, `./express`, `./fetch`, `./lambda`) so the two toolkits compose without glue. They pair up: `koa/` and `express/` are chain-middleware near-twins (user on `ctx.state`/`req`, guards as middleware; Koa refreshes the auth cookie after `await next()`, Express hooks `res.writeHead`); `fetch/` and `lambda/` are handler-wrapper near-twins (immutable request/event → `getUser` is a per-request-memoized lookup via WeakMap, guards wrap handlers, denials are a `Response` / result envelope, cookies serialized in-house via `cookies.js`). The lambda port auto-detects API Gateway v1/v2/Function URL/ALB event shapes, reads headers case-insensitively, and mirrors ALB's multi-value header mode on responses. Shared claim readers (`cognito:groups`, `scope`) sit in `claims.js`.
 
 Testing is offline by design: `tests/helpers/mock-cognito.js` mints signed JWTs and the verification tests preload its JWKS via `verifier.cacheJwks(...)` — no network (aws-jwt-verify's Node fetcher is https-only, so the loopback http server can't serve it JWKS; `cacheJwks` sidesteps that). The middleware tests run real Koa / Express apps over loopback `node:http` and drive them with `fetch`. The mock's HTTP endpoints still serve the `utils/` token tests.

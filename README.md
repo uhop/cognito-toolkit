@@ -4,7 +4,9 @@
 [npm-url]: https://npmjs.org/package/cognito-toolkit
 [aws-jwt-verify]: https://github.com/awslabs/aws-jwt-verify
 
-[AWS Cognito](https://aws.amazon.com/cognito/) authentication & authorization for web apps: a middleware family for **Koa** and **Express** with route guards and an auth-cookie convenience, built on AWS's official [aws-jwt-verify] verifier, plus utilities for obtaining machine-to-machine (`client_credentials`) access tokens. ESM-only, one runtime dependency ([aws-jwt-verify], itself dependency-free).
+[AWS Cognito](https://aws.amazon.com/cognito/) authentication & authorization for web apps: a middleware family for **Koa**, **Express**, **Fetch-style servers** (Bun, Deno, Cloudflare Workers, …), and **AWS Lambda** with route guards and an auth-cookie convenience, built on AWS's official [aws-jwt-verify] verifier, plus utilities for obtaining machine-to-machine (`client_credentials`) access tokens. ESM-only, one runtime dependency ([aws-jwt-verify], itself dependency-free).
+
+The port family mirrors [dynamodb-toolkit](https://github.com/uhop/dynamodb-toolkit)'s adapters (`./koa`, `./express`, `./fetch`, `./lambda`), so the two toolkits compose without glue — e.g. `auth.isAuthenticated(createFetchAdapter(adapter))`.
 
 > **v3 is a breaking reshape.** The homegrown verifier of 1.x is retired — token verification is delegated to [aws-jwt-verify], AWS's own zero-dependency verifier. The sister packages [koa-cognito-middleware](https://github.com/uhop/koa-cognito-middleware) and [cognito-express-middleware](https://github.com/uhop/cognito-express-middleware) moved here as the subpath exports `cognito-toolkit/koa` and `cognito-toolkit/express`; the standalone packages are frozen re-exports. See [Migrating](#migrating).
 
@@ -72,6 +74,44 @@ app.post('/c', auth.hasGroup('user-type/writers'), (req, res) => res.send('only 
 app.post('/d', auth.hasScope('writers'), (req, res) => res.send('only with a writers scope'));
 ```
 
+### Fetch-style servers (Bun, Deno, Cloudflare Workers, …)
+
+Requests are immutable in the Fetch world, so there is no state property: guards **wrap handlers**, and `getUser(request)` is a memoized lookup — one verification per request no matter how often it's called. Extra server args (Bun's `server`, Deno's `info`, Cloudflare's `env`/`ctx`) flow through untouched.
+
+```js
+import {CognitoJwtVerifier} from 'cognito-toolkit';
+import {makeAuth} from 'cognito-toolkit/fetch';
+
+const verifier = CognitoJwtVerifier.create({userPoolId: 'us-east-1_MY_USER_POOL', clientId: 'my-app-client-id', tokenUse: 'access'});
+const auth = makeAuth({verifier});
+
+export default {
+  fetch: auth.isAuthenticated(async request => {
+    const user = await auth.getUser(request); // memoized — already verified by the guard
+    return Response.json(user);
+  })
+};
+
+// per-route guards wrap individual handlers:
+const writers = auth.hasGroup('writers')(async request => new Response('ok'));
+```
+
+### AWS Lambda
+
+Same wrapper model over Lambda events — API Gateway v1 and v2, Function URLs, and ALB event shapes are auto-detected (headers case-insensitively, v2 `cookies` array, ALB multi-value mode mirrored on responses).
+
+```js
+import {CognitoJwtVerifier} from 'cognito-toolkit';
+import {makeAuth} from 'cognito-toolkit/lambda';
+
+const verifier = CognitoJwtVerifier.create({userPoolId: 'us-east-1_MY_USER_POOL', clientId: 'my-app-client-id', tokenUse: 'access'});
+const auth = makeAuth({verifier});
+
+export const handler = auth.hasGroup('admins')(async (event, context) => ({statusCode: 200, body: 'ok'}));
+```
+
+> Behind API Gateway proper, prefer the built-in [Cognito / JWT authorizer](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-jwt-authorizer.html) — it rejects bad tokens without invoking your function. This port's niche is **Function URLs** (whose only auth options are IAM or none), **ALB** targets (pair it with aws-jwt-verify's `AlbJwtVerifier` when the ALB's `authenticate-cognito` action forwards `x-amzn-oidc-data`), and local-debug bridges.
+
 ### Framework-free
 
 ```js
@@ -91,9 +131,9 @@ Full docs: this README plus the [wiki](https://github.com/uhop/cognito-toolkit/w
 
 ## API
 
-### `makeAuth(options)` — `cognito-toolkit/koa` and `cognito-toolkit/express`
+### `makeAuth(options)` — `cognito-toolkit/{koa,express,fetch,lambda}`
 
-Builds a middleware bundle bound to one verifier and one options set. There are no module-level singletons — create as many bundles as you need. Options:
+Builds a middleware bundle bound to one verifier and one options set. There are no module-level singletons — create as many bundles as you need. Options (shared across all four ports; Koa/Express semantics shown, Fetch/Lambda differences below):
 
 - `verifier` — **required.** An [aws-jwt-verify] verifier (`CognitoJwtVerifier` / `JwtVerifier`), or anything with an async `verify(token)` that resolves to a payload and throws on an invalid token.
 - `authHeader` — header carrying the **bare** token (no `Bearer` stripping — see [Security](#security)). A falsy value disables the header source. Default: `'Authorization'`.
@@ -114,6 +154,14 @@ Builds a middleware bundle bound to one verifier and one options set. There are 
 - `stateUserProperty` — the resolved property name (for generic code).
 
 The auth cookie enables a "login once" flow: authenticate via a header once (e.g. after an OAuth2 redirect), persist the token as a cookie, and let subsequent requests authenticate from the cookie automatically.
+
+#### Fetch and Lambda differences
+
+Requests/events are not decorated in these ports (Fetch `Request`s are immutable; Lambda events stay pristine), so the bundle shape shifts:
+
+- No `stateUserProperty` — `getUser(request | event)` is a **memoized async lookup** instead of a middleware: guards and handlers share one verification per request.
+- Guards **wrap handlers** (`auth.hasGroup('g')(handler)`) rather than chaining; denials are a `Response` (Fetch) or a result envelope like `{statusCode: 401}` (Lambda, mirroring ALB multi-value header mode when the trigger uses it).
+- The automatic auth-cookie refresh applies to responses passing through guards; `setAuthCookie` is async and **returns** the response/result to use (Fetch may clone an immutable response; Lambda picks the shape — v2 `cookies` array, v1/ALB headers). Cookies are serialized in-house: `Path=/` and `HttpOnly` by default, `Domain` from the request hostname.
 
 ### `makeGetUser(verifier, options?)`
 

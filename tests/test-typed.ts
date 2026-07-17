@@ -3,6 +3,8 @@ import test from 'tape-six';
 import makeGetUser, {CognitoJwtVerifier, type GetUser, type TokenVerifier} from 'cognito-toolkit';
 import {makeAuth as makeKoaAuth, type Auth as KoaAuth} from 'cognito-toolkit/koa';
 import {makeAuth as makeExpressAuth, type Auth as ExpressAuth} from 'cognito-toolkit/express';
+import {makeAuth as makeFetchAuth, type Auth as FetchAuth} from 'cognito-toolkit/fetch';
+import {makeAuth as makeLambdaAuth, type Auth as LambdaAuth, type LambdaEvent} from 'cognito-toolkit/lambda';
 import {createLazyAccessToken, type LazyAccessToken} from 'cognito-toolkit/utils/lazy-access-token';
 
 const verifier = CognitoJwtVerifier.create({userPoolId: 'us-east-1_X', clientId: 'client', tokenUse: 'access'});
@@ -30,6 +32,13 @@ test('typed: middleware factories return Auth bundles', t => {
   t.equal(typeof express.isAuthenticated, 'function');
   t.equal(typeof express.hasScope('s'), 'function');
   t.equal(express.stateUserProperty, 'account');
+
+  const fetchAuth: FetchAuth = makeFetchAuth({verifier});
+  const wrapped = fetchAuth.isAuthenticated(async (request: Request) => new Response(null));
+  t.equal(typeof wrapped, 'function');
+
+  const lambdaAuth: LambdaAuth = makeLambdaAuth({verifier, source: (event: LambdaEvent) => null});
+  t.equal(typeof lambdaAuth.hasGroup('g'), 'function');
 });
 
 test('typed: createLazyAccessToken returns a holder', t => {

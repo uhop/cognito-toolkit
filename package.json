@@ -8,8 +8,10 @@
   "types": "./src/index.d.ts",
   "exports": {
     ".": "./src/index.js",
-    "./koa": "./src/koa/index.js",
-    "./express": "./src/express/index.js",
+    "./koa": "./src/http/koa/index.js",
+    "./express": "./src/http/express/index.js",
+    "./fetch": "./src/http/fetch/index.js",
+    "./lambda": "./src/http/lambda/index.js",
     "./utils/lazy-access-token": "./src/utils/lazy-access-token/index.js",
     "./utils/renewable-access-token": "./src/utils/renewable-access-token/index.js",
     "./*": "./src/*"
@@ -62,6 +64,7 @@
     "aws-jwt-verify": "^5.2.1"
   },
   "devDependencies": {
+    "@types/aws-lambda": "^8.10.162",
     "@types/express": "^5.0.6",
     "@types/koa": "^3.0.3",
     "@types/node": "^26.1.1",
