@@ -98,6 +98,9 @@ test('lambda: auth-cookie refresh is event-shape-aware', async t => {
   let result = await handler(v2Event({authorization: token}));
   t.ok(result.cookies && result.cookies[0].startsWith('auth='), 'v2: cookie lands in the cookies array');
   t.ok(result.cookies[0].includes('Domain=api.example.com'), 'v2: domain from requestContext');
+  t.ok(result.cookies[0].includes('HttpOnly'), 'v2: HttpOnly by default');
+  t.ok(result.cookies[0].includes('SameSite=Lax'), 'v2: SameSite=Lax by default');
+  t.ok(result.cookies[0].includes('Secure'), 'v2: Secure — API Gateway terminates TLS');
 
   result = await handler(v2Event({authorization: token}, ['auth=' + token]));
   t.equal(result.cookies, undefined, 'v2: no refresh when the cookie already matches');

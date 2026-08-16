@@ -1,7 +1,7 @@
 // @ts-self-types="./index.d.ts"
 import {makeGetUser} from '../../index.js';
 import {getGroups, getScopes} from '../claims.js';
-import {parseCookies, serializeCookie} from '../cookies.js';
+import {authCookieDefaults, parseCookies, serializeCookie} from '../cookies.js';
 
 // AWS Lambda port of the middleware family: wraps `(event, context) => result`
 // handlers across API Gateway v1, v2 / Function URL, and ALB event shapes —
@@ -77,6 +77,15 @@ const addSetCookie = (event, kind, result, cookie) => {
   return result;
 };
 
+// API Gateway and ALB terminate TLS and forward the original scheme; a v2
+// event with neither header reached us over the managed HTTPS endpoint.
+const readSecure = event => {
+  const proto = readHeader(event, 'x-forwarded-proto') || readHeader(event, 'cloudfront-forwarded-proto');
+  if (proto) return String(proto).split(',')[0].trim() === 'https';
+  const http = event.requestContext && event.requestContext.http;
+  return !!(http && http.protocol) || !!(event.requestContext && event.requestContext.domainName);
+};
+
 const readHostname = event => {
   const domain = event.requestContext && event.requestContext.domainName;
   const host = domain || readHeader(event, 'host');
@@ -106,11 +115,15 @@ export const makeAuth = options => {
   const applyAuthCookie = (event, user, result, cookieOptions) => {
     if (!user || !opt.authCookie || !result) return result;
     if (readCookies(event)[opt.authCookie] === user._token) return result;
-    const cookie = serializeCookie(opt.authCookie, user._token, {
-      expires: new Date(user.exp * 1000),
-      domain: readHostname(event),
-      ...cookieOptions
-    });
+    const cookie = serializeCookie(
+      opt.authCookie,
+      user._token,
+      authCookieDefaults(readSecure(event), {
+        expires: new Date(user.exp * 1000),
+        domain: readHostname(event),
+        ...cookieOptions
+      })
+    );
     return addSetCookie(event, detectKind(event), result, cookie);
   };
 

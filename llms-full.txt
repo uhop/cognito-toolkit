@@ -126,7 +126,7 @@ For `(request: Request) => Promise<Response>` servers: Bun.serve, Deno.serve / D
 
 - `getUser(request)` — memoized async lookup (`WeakMap` of pending verifications): guards and handlers share one verification per request; extra calls are free. The resolved user carries `_token`.
 - Guards wrap handlers and preserve extra server args: `auth.isAuthenticated(handler)`, `auth.hasGroup(g)(handler)`, `auth.hasScope(s)(handler)`, `auth.isAllowed(validator)(handler)` with `validator(request, groups, scopes)`. Denials: `new Response(null, {status: 401 | 403})`.
-- `setAuthCookie(request, response, opts?)` — async, **returns** the response to use (clones when the original's headers are immutable). Automatic refresh via `setAuthCookieOptions` applies to responses passing through guards. Cookies serialized in-house: `Path=/` and `HttpOnly` by default, `Domain` defaults to the request hostname.
+- `setAuthCookie(request, response, opts?)` — async, **returns** the response to use (clones when the original's headers are immutable). Automatic refresh via `setAuthCookieOptions` applies to responses passing through guards. Cookies serialized in-house: `Path=/`, `Domain` defaults to the request hostname, and the shared auth-cookie defaults apply (see § Auth-cookie attributes).
 
 ```js
 import {makeAuth} from 'cognito-toolkit/fetch';
@@ -187,6 +187,22 @@ Unrelated to verification: obtain **outbound** OAuth2 `client_credentials` acces
 - `getToken()` — always read the live token through this (renewal replaces it over time).
 
 Both throw on a non-2xx token response and on a malformed 2xx body (a broken auth server is an error, not a "no token" state).
+
+## Auth-cookie attributes
+
+All four ports write the auth cookie through one shared helper (`authCookieDefaults` in `src/http/cookies.js`), so their emitted attributes match:
+
+- **`HttpOnly`** and **`SameSite=Lax`** — always. `sameSite` is pinned rather than left to the browser default, which varies by engine and vintage.
+- **`Secure`** — set when the request arrived over HTTPS (`req.secure` / `ctx.secure`; `x-forwarded-proto` then the URL scheme for fetch; the forwarded header or event shape for lambda). It follows the connection instead of being forced, because a `Secure` cookie over plain http is silently dropped by the browser and local development then fails with no signal.
+- Caller options win over all of the above: `setAuthCookieOptions: {sameSite: 'strict'}`, `setAuthCookie(ctx, {httpOnly: false})`, etc.
+
+The helper exists because the ports reach three different serializers — express `res.cookie`, koa `ctx.cookies.set`, and the in-house `serializeCookie` — and only two of them defaulted `HttpOnly`; each port's tests now assert the emitted attributes.
+
+## Claim freshness and revocation
+
+`hasGroup` / `hasScope` / `isAllowed` read `cognito:groups` and `scope` **off the verified token**, so authorization costs no lookup and is **eventually consistent** with Cognito: a group change reaches a session only when its token refreshes. Revocation has the matching bound — `RevokeToken` / `GlobalSignOut` stop new issuance but leave outstanding access tokens valid to `exp`, and `setAuthCookie` expires the cookie at that same `exp`. The app client's access-token validity (5 min – 24 h, default 1 h) is therefore the incident-response window.
+
+Both are deliberate trades. Where a privilege change must take effect immediately, check the authoritative source inside the guard — `AdminListGroupsForUser` (or `AdminGetUser` for account state) with a short-TTL cache — rather than trusting the claim. Worked example in the README's Security section.
 
 ## Typings
 

@@ -1,6 +1,7 @@
 // @ts-self-types="./index.d.ts"
 import {makeGetUser} from '../../index.js';
 import {getGroups, getScopes} from '../claims.js';
+import {authCookieDefaults} from '../cookies.js';
 
 const makeTokenSource = (header, cookie) => {
   if (!header) return req => (req.cookies && req.cookies[cookie]) || null;
@@ -18,12 +19,16 @@ export const makeAuth = options => {
   const setAuthCookie = (req, res, cookieOptions) => {
     const user = req[prop];
     if (user && opt.authCookie && (!req.cookies || req.cookies[opt.authCookie] !== user._token)) {
-      res.cookie(opt.authCookie, user._token, {
-        expires: new Date(user.exp * 1000),
-        // hostname, not host: express 5 keeps the port on req.host and the cookie serializer rejects it
-        domain: req.hostname,
-        ...cookieOptions
-      });
+      res.cookie(
+        opt.authCookie,
+        user._token,
+        authCookieDefaults(req.secure, {
+          expires: new Date(user.exp * 1000),
+          // hostname, not host: express 5 keeps the port on req.host and the cookie serializer rejects it
+          domain: req.hostname,
+          ...cookieOptions
+        })
+      );
     }
   };
 

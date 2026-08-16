@@ -235,6 +235,49 @@ Tokens must be the **bare JWT** — there is no `Authorization: Bearer ` handlin
 const auth = makeAuth({verifier, source: ctx => (ctx.headers.authorization || '').replace(/^Bearer\s+/i, '') || null});
 ```
 
+### Authorization is decided from token claims, so it goes stale
+
+`hasGroup`, `hasScope`, and `isAllowed` read `cognito:groups` and `scope` **off the token**, which means they decide from claims baked in when the token was issued. Removing a user from a group in Cognito therefore has **no effect until their token refreshes** — up to the access token's remaining lifetime.
+
+That is the trade this package makes on purpose: no lookup per request, so a guard costs a signature check and nothing else. It is the right default for group and scope membership that changes rarely. Where a privilege change must take effect **immediately**, do not rely on the claim — check the authoritative source in the guard, and cache it briefly:
+
+```js
+import {CognitoIdentityProviderClient, AdminListGroupsForUserCommand} from '@aws-sdk/client-cognito-identity-provider';
+
+const cip = new CognitoIdentityProviderClient({});
+const cache = new Map(); // username -> {groups, at}
+
+const currentGroups = async username => {
+  const hit = cache.get(username);
+  if (hit && Date.now() - hit.at < 30_000) return hit.groups;
+  const out = await cip.send(new AdminListGroupsForUserCommand({UserPoolId: POOL_ID, Username: username}));
+  const groups = (out.Groups || []).map(g => g.GroupName);
+  cache.set(username, {groups, at: Date.now()});
+  return groups;
+};
+
+const isCurrentAdmin = async ctx => (await currentGroups(ctx.state.user['cognito:username'])).includes('admins');
+```
+
+Same shape for `AdminGetUser` when the question is whether the account is still enabled.
+
+### Revocation has a bounded lag
+
+Revoking a refresh token or calling `GlobalSignOut` stops **new** tokens from being issued; it does not invalidate access tokens already in the wild, which stay valid until their `exp`. `setAuthCookie` sets the cookie to expire at exactly that `exp`, so a signed-out user's browser keeps presenting a working token for the remainder of the window.
+
+The window is Cognito's **access token validity**, configurable per app client from 5 minutes to 24 hours (default 1 hour). Treat that setting as your incident-response time: it is how long a compromised or revoked session stays usable. Shorten it if that matters more than the extra refresh traffic.
+
+### Auth-cookie attributes
+
+The cookie written by `setAuthCookie` / `setAuthCookieOptions` carries the token itself, so all four ports emit the same defaults: **`HttpOnly`**, **`SameSite=Lax`**, and **`Secure` whenever the request arrived over HTTPS** (`req.secure` / `ctx.secure`, `x-forwarded-proto`, or the API Gateway / ALB event shape). `Secure` follows the connection rather than being forced on, because a `Secure` cookie over plain http is dropped by the browser and auth then fails silently in local development.
+
+Every attribute is a default, not a policy — caller options win:
+
+```js
+makeAuth({verifier, setAuthCookieOptions: {sameSite: 'strict', secure: true}});
+auth.setAuthCookie(ctx, {httpOnly: false}); // script-readable, if you really want that
+```
+
 ## Migrating
 
 ### From `koa-cognito-middleware` / `cognito-express-middleware` 1.x

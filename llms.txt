@@ -54,13 +54,13 @@ Bundle members:
 - `isAuthenticated` — guard: 401 without a user.
 - `hasGroup(group)` / `hasScope(scope)` — guards: 401 without a user, 403 without the `cognito:groups` membership / `scope` claim entry.
 - `isAllowed(validator)` — guard with `(ctx|req, groups, scopes) => boolean | Promise<boolean>`; falsy → 401 (anonymous) / 403 (authenticated).
-- `setAuthCookie(ctx, opts?)` / `setAuthCookie(req, res, opts?)` — persist the current token into the auth cookie (skipped when already there). Expires with the token; domain defaults to the request hostname.
+- `setAuthCookie(ctx, opts?)` / `setAuthCookie(req, res, opts?)` — persist the current token into the auth cookie (skipped when already there). Expires with the token; domain defaults to the request hostname; `HttpOnly` + `SameSite=Lax` always, `Secure` when the request arrived over HTTPS. Caller options override every attribute.
 
 Fetch / Lambda differences (immutable request / pristine event — no state property):
 
 - `getUser(request | event)` is a memoized async lookup (one verification per request; WeakMap-backed) instead of a middleware.
 - Guards wrap handlers — `auth.isAuthenticated(handler)`, `auth.hasGroup(g)(handler)` — passing extra args through (Bun `server`, Cloudflare `env`/`ctx`, Lambda `context`); denials are a `Response` (fetch) or `{statusCode: 401|403}` envelope (lambda, ALB multi-value mode mirrored).
-- `setAuthCookie(request, response, opts?)` / `setAuthCookie(event, result, opts?)` is async and returns the response/result to use; automatic refresh (via `setAuthCookieOptions`) applies on guarded responses. Cookies serialized in-house: `Path=/`, `HttpOnly` by default.
+- `setAuthCookie(request, response, opts?)` / `setAuthCookie(event, result, opts?)` is async and returns the response/result to use; automatic refresh (via `setAuthCookieOptions`) applies on guarded responses. Cookies serialized in-house: `Path=/`, plus the same shared defaults as koa/express (`HttpOnly`, `SameSite=Lax`, `Secure` when the request was HTTPS — `x-forwarded-proto`, then the URL scheme / event shape).
 - Lambda events: API Gateway v1/v2/Function URL/ALB auto-detected; headers read case-insensitively; v2 `cookies` array supported. Behind API Gateway proper prefer the built-in Cognito/JWT authorizer; this port's niche is Function URLs, ALB (`AlbJwtVerifier`), local bridges.
 
 ### `makeGetUser(verifier, options?) -> (token) => Promise<payload | null>`

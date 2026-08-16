@@ -98,6 +98,9 @@ test('express: auth-cookie refresh', async t => {
   let response = await fetch(`${base}/user`, {headers: {authorization: token}});
   const cookie = response.headers.get('set-cookie');
   t.ok(cookie && cookie.startsWith('auth='), 'auth cookie is set from the header token');
+  t.ok(/;\s*HttpOnly/i.test(cookie), 'HttpOnly by default');
+  t.ok(/;\s*SameSite=Lax/i.test(cookie), 'SameSite=Lax by default');
+  t.ok(!/;\s*Secure/i.test(cookie), 'no Secure over a plain-http test server');
 
   response = await fetch(`${base}/user`, {headers: {authorization: token, cookie: 'auth=' + token}});
   t.equal(response.headers.get('set-cookie'), null, 'no refresh when the cookie already matches');

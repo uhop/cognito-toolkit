@@ -80,6 +80,8 @@ test('fetch: auth-cookie refresh', async t => {
   const cookie = response.headers.get('set-cookie');
   t.ok(cookie && cookie.startsWith('auth='), 'auth cookie is set from the header token');
   t.ok(cookie && cookie.includes('HttpOnly'), 'HttpOnly by default');
+  t.ok(cookie.includes('SameSite=Lax'), 'SameSite=Lax by default');
+  t.ok(!cookie.includes('Secure'), 'no Secure over a plain-http request');
 
   response = await handler(new Request('http://localhost/', {headers: {authorization: token, cookie: 'auth=' + token}}));
   t.equal(response.headers.get('set-cookie'), null, 'no refresh when the cookie already matches');

@@ -13,6 +13,21 @@ export const parseCookies = header => {
   return out;
 };
 
+// One source of truth for the auth cookie's attributes, so the four ports cannot
+// drift: express reaches res.cookie and koa ctx.cookies.set, neither of which
+// passes through serializeCookie below.
+// sameSite is pinned rather than left to the browser default: modern engines
+// default to Lax, pre-2020 ones to None, and Chrome exempts recent top-level
+// POSTs from its own default.
+// secure follows the connection — forcing it on plaintext makes the browser
+// drop the cookie and auth fails silently; callers can override either way.
+export const authCookieDefaults = (secureConnection, options) => ({
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: !!secureConnection,
+  ...options
+});
+
 const SAME_SITE = {strict: 'Strict', lax: 'Lax', none: 'None'};
 
 export const serializeCookie = (name, value, options) => {

@@ -1,7 +1,7 @@
 // @ts-self-types="./index.d.ts"
 import {makeGetUser} from '../../index.js';
 import {getGroups, getScopes} from '../claims.js';
-import {parseCookies, serializeCookie} from '../cookies.js';
+import {authCookieDefaults, parseCookies, serializeCookie} from '../cookies.js';
 
 // Fetch port of the middleware family: wraps `(request: Request, ...rest) =>
 // Promise<Response>` handlers, passing extra server args (Bun.serve's server,
@@ -50,11 +50,17 @@ export const makeAuth = options => {
   const applyAuthCookie = (request, user, response, cookieOptions) => {
     if (!user || !opt.authCookie || !response) return response;
     if (parseCookies(request.headers.get('cookie'))[opt.authCookie] === user._token) return response;
-    const cookie = serializeCookie(opt.authCookie, user._token, {
-      expires: new Date(user.exp * 1000),
-      domain: new URL(request.url).hostname,
-      ...cookieOptions
-    });
+    const url = new URL(request.url);
+    const proto = request.headers.get('x-forwarded-proto');
+    const cookie = serializeCookie(
+      opt.authCookie,
+      user._token,
+      authCookieDefaults(proto ? proto.split(',')[0].trim() === 'https' : url.protocol === 'https:', {
+        expires: new Date(user.exp * 1000),
+        domain: url.hostname,
+        ...cookieOptions
+      })
+    );
     return appendSetCookie(response, cookie);
   };
 
