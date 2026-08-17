@@ -83,7 +83,7 @@ import {CognitoJwtVerifier} from 'cognito-toolkit';
 import {makeAuth} from 'cognito-toolkit/koa';
 
 const verifier = CognitoJwtVerifier.create({userPoolId: 'us-east-1_AbCdef', clientId: 'app', tokenUse: 'access'});
-const auth = makeAuth({verifier, setAuthCookieOptions: {httpOnly: true, secure: true}});
+const auth = makeAuth({verifier, setAuthCookieOptions: {}}); // {} is meaningful: refresh the cookie, take the defaults
 
 const app = new Koa();
 const router = new Router();

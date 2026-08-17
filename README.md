@@ -308,6 +308,7 @@ const getUser = makeGetUser(CognitoJwtVerifier.create({userPoolId: 'us-east-1_X'
 
 ## Release notes
 
+- **3.1.1** _Hardened auth-cookie defaults across all four ports — `HttpOnly` and `SameSite=Lax` unconditionally, `Secure` derived from the request scheme; the Express port had been emitting a script-readable cookie. Claim staleness and revocation lag documented._
 - **3.1.0** _New middleware ports: `cognito-toolkit/fetch` (Bun, Deno, Cloudflare Workers, …) and `cognito-toolkit/lambda` (API Gateway, Function URLs, ALB); renewable tokens survive failed renewals (`retryInterval` + `onError`); `AlbJwtVerifier` re-exported; browser-side flow documented in the wiki._
 - **3.0.0** _Breaking reshape: verification delegated to AWS's [aws-jwt-verify]; the Koa & Express middlewares absorbed as `cognito-toolkit/koa` / `cognito-toolkit/express` with per-instance `makeAuth` bundles._
 - **2.0.0** _Zero-dependency rewrite of the 1.x verifier — never published; superseded by 3.0.0._

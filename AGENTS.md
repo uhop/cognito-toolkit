@@ -43,7 +43,8 @@ cognito-toolkit/
 │   │   ├── fetch/index.js + index.d.ts   # makeAuth — Fetch handler-wrapper bundle (Bun/Deno/Workers)
 │   │   ├── lambda/index.js + index.d.ts  # makeAuth — Lambda handler-wrapper bundle (v1/v2/Function URL/ALB)
 │   │   ├── claims.js / claims.d.ts       # getGroups / getScopes claim readers (shared by all ports)
-│   │   └── cookies.js / cookies.d.ts     # cookie parse/serialize (shared by fetch + lambda)
+│   │   └── cookies.js / cookies.d.ts     # cookie parse/serialize (fetch + lambda) +
+│   │                                     #   authCookieDefaults attribute policy (all four ports)
 │   ├── debug.js / debug.d.ts         # util.debuglog('cognito-toolkit') channel
 │   └── utils/
 │       ├── fetch-token.js / .d.ts            # internal client_credentials POST helper
@@ -76,7 +77,7 @@ The published tarball ships **`src/`, `README.md`, `LICENSE`, `llms.txt`, `llms-
 - **Node 20+** target. Also runs on the latest Bun and Deno.
 - **No `any` in `.d.ts`.** Use proper shapes or `unknown`. (Generics flow the payload type from the verifier.)
 - **Arrow functions + FP style preferred.** No classes — factories returning per-instance closures. Never reintroduce module-level mutable singletons: the v1 middlewares' static `getUser.stateUserProperty` / shared guards were exactly that footgun, and `makeAuth`'s per-instance bundle is the fix. Don't add statics to it.
-- **Security posture** — verification (algorithm policy, signature, JWKS rotation, claim checks) is aws-jwt-verify's domain; do not add verification logic here. The glue's own invariants: tokens are used **bare** (no `Bearer` parsing anywhere); an absent token is anonymous (`null`), never an error, even under `throwOnError`; guards answer 401 for anonymous vs 403 for unauthorized; cookie `domain` uses the request **hostname** (never `host` — Express 5 keeps the port there and the cookie serializer rejects it).
+- **Security posture** — verification (algorithm policy, signature, JWKS rotation, claim checks) is aws-jwt-verify's domain; do not add verification logic here. The glue's own invariants: tokens are used **bare** (no `Bearer` parsing anywhere); an absent token is anonymous (`null`), never an error, even under `throwOnError`; guards answer 401 for anonymous vs 403 for unauthorized; cookie `domain` uses the request **hostname** (never `host` — Express 5 keeps the port there and the cookie serializer rejects it); every auth-cookie attribute default comes from `authCookieDefaults` so the four ports cannot drift (`HttpOnly` + `SameSite=Lax` unconditional, `Secure` **derived** from the request scheme — never forced, or local http dev breaks silently), and each port's test asserts the emitted `Set-Cookie`.
 - **Prettier** enforces formatting (`.prettierrc`, `printWidth: 160`). Run `npm run lint:fix` before commits.
 - **Two tsconfig files:** `tsconfig.json` strict (for `.d.ts` sidecars + `.ts` tests), `tsconfig.check.json` lenient + `checkJs` (catches unused vars / undeclared refs in `.js`). Avoid `({a, b} = {})` destructure-defaults in `.js` — they infer the empty type and fail `js-check`; take a named param and destructure with `|| {}` inside.
 - **Pre-increment when the value is discarded** (`++i` / `--i`, not `i++` / `i--`). Cross-project style rule.
